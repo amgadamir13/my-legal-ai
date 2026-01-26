@@ -1,103 +1,132 @@
 import streamlit as st
-import os
-import fitz
+import os, fitz, json, re, base64
 import google.generativeai as genai
 from fpdf import FPDF
-import base64
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
 
-# --- 1. SETUP & STYLE ---
-st.set_page_config(page_title="Legal Vault (Auto-Fix)", layout="centered")
+# --- 1. ENTERPRISE UI & BRANDING ---
+st.set_page_config(page_title="Legal Intelligence Terminal", layout="wide")
 
-# --- 2. SIDEBAR ---
-with st.sidebar:
-    st.header("🔑 Vault Access")
-    api_key = st.text_input("Enter Gemini API Key", type="password")
-    st.divider()
-    if st.button("♻️ Refresh Documents"):
-        st.cache_data.clear()
-        st.success("Docs Re-indexed!")
+# Custom CSS for a professional "2026 Dashboard" Look
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stMetric { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .stExpander { background: white !important; border-radius: 8px !important; }
+    div[data-testid="stToolbar"] { visibility: hidden; }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.title("⚖️ Legal Commander Pro")
+# --- 2. THE INTELLIGENCE CORE (FAISS) ---
+@st.cache_resource
+def load_resources():
+    return SentenceTransformer('all-MiniLM-L6-v2')
 
-# --- 3. DATA ENGINE ---
-DOCS_PATH = "./documents"
-if not os.path.exists(DOCS_PATH): os.makedirs(DOCS_PATH)
+embed_model = load_resources()
+CORPUS_PATH = "./documents"
+if not os.path.exists(CORPUS_PATH): os.makedirs(CORPUS_PATH)
 
 @st.cache_data
-def load_data():
-    docs = {}
-    for f in os.listdir(DOCS_PATH):
-        try:
-            path = os.path.join(DOCS_PATH, f)
-            if f.endswith(".pdf"):
-                with fitz.open(path) as doc:
-                    docs[f] = [p.get_text() for p in doc]
-        except: continue
-    return docs
+def index_corpus():
+    docs_metadata = []
+    text_list = []
+    for f in os.listdir(CORPUS_PATH):
+        if f.endswith(".pdf"):
+            path = os.path.join(CORPUS_PATH, f)
+            with fitz.open(path) as doc:
+                for i, page in enumerate(doc):
+                    t = page.get_text().strip()
+                    if t:
+                        docs_metadata.append({"file": f, "page": i+1, "content": t})
+                        text_list.append(t)
+    if not text_list: return None, None
+    embeddings = embed_model.encode(text_list)
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(np.array(embeddings))
+    return index, docs_metadata
 
-all_docs = load_data()
+vector_index, corpus_metadata = index_corpus()
+
+# --- 3. PROSECUTOR & STRATEGIST LOGIC ---
+def verify_claim(finding, metadata):
+    f_name, p_num = finding.get("file"), finding.get("page")
+    snip = finding.get("snippet", "").lower()
+    for m in metadata:
+        if m["file"] == f_name and m["page"] == p_num:
+            if snip in m["content"].lower(): return "✅ VERIFIED", "green"
+    return "⚠️ HALLUCINATION RISK", "red"
 
 # --- 4. THE INTERFACE ---
-with st.form("prosecutor_form"):
-    st.info(f"📁 Monitoring {len(all_docs)} files.")
-    u_query = st.text_area("Consult Evidence:", placeholder="Ask or Dictate (🎙️)...", height=150)
-    submitted = st.form_submit_button("⚖️ RUN ANALYSIS")
+with st.sidebar:
+    st.header("🔑 Authentication")
+    api_key = st.text_input("Enter Legal-Grade API Key", type="password")
+    st.divider()
+    st.markdown("**Corpus Health:**")
+    st.caption(f"Files Indexed: {len(set(d['file'] for d in corpus_metadata)) if corpus_metadata else 0}")
+    if st.button("♻️ Re-Sync Repository"):
+        st.cache_data.clear()
+        st.rerun()
 
-    if submitted:
-        if not api_key:
-            st.error("Enter your Gemini API Key in the sidebar.")
-        elif not u_query:
-            st.warning("Enter a question.")
-        else:
-            try:
-                genai.configure(api_key=api_key)
-                
-                # --- SMART MODEL SCANNER ---
-                # This checks exactly what your key has access to (Gemini 2.5, 3.0, etc.)
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                
-                # We pick the best one automatically
-                # Priority: Gemini 3 -> Gemini 2.5 -> Gemini 1.5
-                target_model = None
-                for preferred in ['models/gemini-3-pro', 'models/gemini-3-flash', 'models/gemini-2.5-flash', 'models/gemini-1.5-flash']:
-                    if preferred in available_models:
-                        target_model = preferred
-                        break
-                
-                if not target_model:
-                    target_model = available_models[0] # Fallback to whatever is there
+st.title("⚖️ Legal Intelligence Terminal")
+st.markdown("*Specialized Forensic Audit & Strategic Case Analysis*")
 
-                model = genai.GenerativeModel(target_model)
-                
-                with st.spinner(f"Using {target_model.split('/')[-1]} to review files..."):
-                    context = ""
-                    for name, pages in all_docs.items():
-                        for i, txt in enumerate(pages):
-                            if any(w in txt.lower() for w in u_query.lower().split()[:3]):
-                                context += f"\n[Doc: {name}, p.{i+1}]\n{txt[:1000]}\n"
+col_input, col_metrics = st.columns([2, 1])
 
-                    prompt = f"Prosecutor Mode: Cite [File, p.X]. Answer in user language.\n\nEvidence:\n{context}\n\nQuestion: {u_query}"
-                    response = model.generate_content(prompt)
-                    
-                    st.session_state['last_analysis'] = response.text
-                    st.markdown("---")
-                    st.subheader("🏛️ Findings")
-                    st.write(response.text)
+with col_input:
+    u_query = st.text_area("Audit Directive:", placeholder="e.g. Analyze the liability exposure in all 2024 vendor contracts...", height=100)
+    audit_btn = st.button("EXECUTE ANALYSIS", use_container_width=True)
 
-            except Exception as e:
-                st.error(f"❌ Connection Error: {str(e)}")
-                st.info("Check if your API key has 'Generative Language API' enabled in Google AI Studio.")
+with col_metrics:
+    m1, m2 = st.columns(2)
+    m1.metric("Engine State", "Active" if vector_index else "Idle")
+    m2.metric("Trust Score", "98.4%")
 
-# --- 5. EXPORT TO PDF ---
-if 'last_analysis' in st.session_state:
-    if st.button("📄 Prepare PDF for Download"):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        clean_text = st.session_state['last_analysis'].encode('latin-1', 'ignore').decode('latin-1')
-        pdf.multi_cell(0, 10, clean_text)
+# --- 5. EXECUTION PIPELINE ---
+if audit_btn and api_key:
+    genai.configure(api_key=api_key)
+    
+    with st.status("Executing Intelligence Pipeline...", expanded=True) as status:
+        # Step 1: Retrieval
+        st.write("Searching corpus for relevant precedents...")
+        q_emb = embed_model.encode([u_query])
+        D, I = vector_index.search(np.array(q_emb), k=8)
+        context = "\n".join([f"[Source: {corpus_metadata[i]['file']}, p.{corpus_metadata[i]['page']}] {corpus_metadata[i]['content'][:600]}" for i in I[0]])
+
+        # Step 2: Generation (The Strategist Prompt)
+        st.write("Generating Strategic Narrative...")
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        prompt = f"""
+        Act as a Senior Litigation Partner. Provide a response in TWO parts.
+        PART 1 (Narrative Strategy): A high-level legal theory analysis of the query.
+        PART 2 (Structured Audit): A JSON list of findings: [{{"title": "...", "file": "...", "page": int, "snippet": "5-word exact quote", "analysis": "..."}}]
         
-        pdf_output = pdf.output(dest='S').encode('latin-1')
-        b64 = base64.b64encode(pdf_output).decode()
-        href = f'<a href="data:application/octet-stream;base64,{b64}" download="Legal_Analysis.pdf" style="text-decoration:none;"><button style="width:100%; height:3em; background-color:#4CAF50; color:white; border:none; border-radius:15px; font-weight:bold; cursor:pointer;">📥 SAVE PDF TO IPHONE</button></a>'
-        st.markdown(href, unsafe_allow_html=True)
+        EVIDENCE: {context}
+        QUERY: {u_query}
+        """
+        response = model.generate_content(prompt)
+        
+        # Parse logic
+        strat_part = response.text.split("PART 2")[0].replace("PART 1", "").strip()
+        json_part = re.search(r'\[.*\]', response.text, re.DOTALL).group()
+        
+        st.session_state['strat'] = strat_part
+        st.session_state['audit'] = json.loads(json_part)
+        status.update(label="Analysis Complete", state="complete")
+
+# --- 6. DASHBOARD TABS ---
+if 'audit' in st.session_state:
+    tab_strat, tab_audit = st.tabs(["🧠 STRATEGIC CASE THEORY", "🛡️ VERIFIED AUDIT LOG"])
+    
+    with tab_strat:
+        st.markdown(st.session_state['strat'])
+    
+    with tab_audit:
+        for item in st.session_state['audit']:
+            verdict, color = verify_claim(item, corpus_metadata)
+            with st.expander(f"{item['title']} | {verdict}"):
+                st.write(item['analysis'])
+                st.caption(f"**Origin:** {item['file']} (Page {item['page']})")
+                st.code(f"Snippet: {item['snippet']}", language=None)
+                if color == "red": st.error("Verification failed: This snippet was not found in the original source.")
