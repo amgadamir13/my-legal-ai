@@ -1,9 +1,8 @@
 openai
-thefuzz
-python-levenshtein
-PyMuPDF
+streamlit
+pymupdf
 pandas
 openpyxl
-streamlit
-pytesseract
+thefuzz
+python-levenshtein
 Pillow
