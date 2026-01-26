@@ -1,60 +1,57 @@
+import streamlit as st
 import os
-import fitz  # مكتبة PyMuPDF لقراءة الـ PDF
+import fitz # PDF
+import pandas as pd # Excel
 import openai
 from verification import verify_citations
 
-# إعدادات المجلد والمفتاح
+# UI SETUP
+st.set_page_config(page_title="Legal Commander", layout="wide")
+st.title("⚖️ Legal Case Commander")
+
+# SIDEBAR: Folder Logic
 DOCS_FOLDER = "./documents"
-openai.api_key = "ضع_مفتاحك_هنا"
+if not os.path.exists(DOCS_FOLDER):
+    os.makedirs(DOCS_FOLDER)
 
-SYSTEM_INSTRUCTION = """
-You are a Bilingual Legal Expert (Arabic/English).
-1. Analyze as Compliance, Risk, and Drafting Agents.
-2. Provide citations for EVERY fact: [Document Name, p. PageNumber].
-3. Answer in the same language as the user's question.
-4. If the info isn't in the docs, say 'Not found in sources'.
-"""
-
-def load_pdf_documents():
-    """لقراءة كافة ملفات الـ PDF في المجلد"""
-    docs_db = {}
-    if not os.path.exists(DOCS_FOLDER):
-        return docs_db
-        
-    for filename in os.listdir(DOCS_FOLDER):
-        if filename.endswith(".pdf"):
-            path = os.path.join(DOCS_FOLDER, filename)
+# 1. LOAD DATA (PDF & EXCEL)
+def load_data():
+    all_content = {}
+    for file in os.listdir(DOCS_FOLDER):
+        path = os.path.join(DOCS_FOLDER, file)
+        if file.endswith(".pdf"):
             doc = fitz.open(path)
-            # تخزين كل صفحة كنص مستقل
-            docs_db[filename] = [page.get_text() for page in doc]
-    return docs_db
+            all_content[file] = [page.get_text() for page in doc]
+        elif file.endswith(".xlsx") or file.endswith(".csv"):
+            df = pd.read_excel(path) if file.endswith(".xlsx") else pd.read_csv(path)
+            all_content[file] = [df.to_string()]
+    return all_content
 
-def get_ai_response(user_query):
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": SYSTEM_INSTRUCTION},
-            {"role": "user", "content": user_query}
-        ]
-    )
-    return response.choices[0].message.content
+# 2. APP TABS
+tab_chat, tab_time, tab_court = st.tabs(["🔍 Analysis", "📅 Timeline", "📎 Attachments"])
 
-def run_app(user_input):
-    # 1. تحميل المستندات
-    all_docs = load_pdf_documents()
-    
-    # 2. الحصول على إجابة الذكاء الاصطناعي
-    answer = get_ai_response(user_input)
-    
-    # 3. التحقق من صحة المراجع (Lie Detector)
-    checks = verify_citations(answer, all_docs)
-    
-    # 4. التنسيق النهائي للشاشة (عربي وإنجليزي)
-    report = f"### ⚖️ التحليل القانوني / Legal Analysis\n\n{answer}\n\n---\n"
-    report += "### 🛡️ فحص الدقة / Accuracy Check\n"
-    
-    for c in checks:
-        status = "✅ موثق" if c['verified'] else "❌ مخاطرة (هلوسة)"
-        report += f"* {c['source']} (p.{c['page']}): {status} ({c['score']}%)\n"
+with tab_chat:
+    query = st.text_input("Ask a question about your 50+ docs (AR/EN):")
+    if query:
+        st.info("Searching through documents...")
+        # Simulating AI Response for UI layout
+        response = "The contract specifies a 30-day notice [Contract_A.pdf, p. 5]. The handwriting on page 2 is [UNCLEAR]."
+        st.write(response)
         
-    return report
+        # Run Verification
+        results = verify_citations(response, load_data())
+        for r in results:
+            color = "green" if r['verified'] else "red"
+            st.markdown(f":{color}[{r['source']} p.{r['page']} - Match: {r['score']}%]")
+
+with tab_time:
+    st.subheader("Case Event Sequence")
+    # This would be populated by AI date extraction
+    st.write("- **Jan 20, 2026**: Contract Signed (Verified)")
+    st.write("- **Feb 15, 2026**: Potential Dispute (Estimate based on Letter_B.pdf)")
+
+with tab_court:
+    st.subheader("Required for Court Tomorrow")
+    st.checkbox("USB with 3 Videos")
+    st.checkbox("Printed Evidence Photos (Set of 5)")
+    st.checkbox("Physical Case Folder #102")
