@@ -1,5 +1,4 @@
 openai
-langchain
 thefuzz
 python-levenshtein
 pydantic
