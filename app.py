@@ -6,116 +6,107 @@ import faiss
 import numpy as np
 from PIL import Image
 
-# --- 1. واجهة المستخدم الاحترافية ---
-st.set_page_config(page_title="المحقق القانوني", layout="centered")
+# 1. إعداد الواجهة لتكون احترافية ومنظمة (سهلة للعين)
+st.set_page_config(page_title="المستشار القانوني الذكي", layout="centered")
 
+# تنسيق المتصفح ليدعم اللغة العربية والخطوط المريحة
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    html, body, [data-testid="stAppViewContainer"], .main, .stApp {
-        direction: rtl !important;
-        text-align: right !important;
-        font-family: 'Cairo', sans-serif !important;
-    }
-    input[type="password"] { direction: ltr !important; text-align: left !important; }
-    .legal-card {
-        background: white; padding: 25px; border-radius: 15px;
-        border-right: 10px solid #1A73E8;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-top: 20px;
-    }
-    .error-tag { color: #d32f2f; font-size: 0.8em; font-weight: bold; }
+    * { direction: rtl; text-align: right; font-family: 'Cairo', sans-serif; }
+    .stTextArea textarea { font-size: 1.1em !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. محرك المعالجة "المرن" ---
 @st.cache_resource
-def load_engine():
+def get_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
-embed_model = load_engine()
-DOCS_DIR = "documents"
+model_engine = get_model()
+DIR = "documents"
 
-@st.cache_data
-def load_and_fix_docs():
-    meta, texts = [], []
-    if not os.path.exists(DOCS_DIR): os.makedirs(DOCS_PATH)
-    
-    # جلب كافة الملفات
-    all_files = [f for f in os.listdir(DOCS_DIR) if not f.startswith('.')]
-    
-    for f in all_files:
-        path = os.path.join(DOCS_DIR, f)
+def read_docs():
+    data, raw_texts = [], []
+    if not os.path.exists(DIR): os.makedirs(DIR)
+    for f in os.listdir(DIR):
+        if f.startswith('.'): continue
+        path = os.path.join(DIR, f)
         try:
-            # معالجة الـ PDF
             if f.lower().endswith('.pdf'):
                 with fitz.open(path) as doc:
-                    for i, page in enumerate(doc):
-                        t = page.get_text().strip()
+                    for i, p in enumerate(doc):
+                        t = p.get_text().strip()
                         if t:
-                            meta.append({"file": f, "page": i+1, "text": t, "type": "pdf"})
-                            texts.append(t)
-            # معالجة الصور بكافة أنواعها
-            elif f.lower().endswith(('.png', '.jpg', '.jpeg', '.mpo', '.heic', '.webp')):
-                meta.append({"file": f, "page": "صورة", "text": f"مستند مصور: {f}", "type": "image"})
-                texts.append(f"مستند مصور: {f}")
-            else:
-                continue # تجاهل الملفات غير المدعومة دون تعطيل النظام
-        except Exception:
-            # إذا فشل ملف واحد، نكمل للباقي دون توقف
-            st.warning(f"⚠️ تعذر قراءة الملف: {f} - سيتم تخطيه.")
-            continue
-            
-    if not texts: return None, None
-    idx = faiss.IndexFlatL2(embed_model.encode(texts).shape[1])
-    idx.add(np.array(embed_model.encode(texts)).astype('float32'))
-    return idx, meta
+                            data.append({"f": f, "p": i+1, "t": t, "type": "pdf"})
+                            raw_texts.append(t)
+            elif f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                data.append({"f": f, "p": "صورة", "t": f"مستند صوري {f}", "type": "image"})
+                raw_texts.append(f"صورة مستند {f}")
+        except: continue
+    return data, raw_texts
 
-vector_index, library = load_and_fix_docs()
+# --- الواجهة الجديدة ---
+st.title("⚖️ المستشار القانوني المصري الذكي")
+st.info("مرحباً بك. أنا مستشارك القانوني، أدمج بين نصوص ملفاتك وبين خبرتي العميقة بالقانون المصري لإيجاد أفضل الحلول.")
 
-# --- 3. الواجهة ---
-st.markdown('<center><img src="https://www.gstatic.com/lamda/images/gemini_sparkle_v002.svg" width="60"></center>', unsafe_allow_html=True)
-st.title("المساعد القانوني الذكي")
+# ميزة الملء التلقائي للمفتاح (Auto-fill)
+# أضفنا وسوم HTML تجعل المتصفح يتعرف عليه ككلمة مرور محفوظة
+key = st.text_input("المفتاح السري (Gemini Key):", type="password", help="سيقوم المتصفح باقتراح المفتاح إذا قمت بحفظه مسبقاً", autocomplete="current-password")
 
-api_key = st.text_input("أدخل مفتاح Gemini السري:", type="password")
+query = st.text_area("اشرح قضيتك أو سؤالك هنا:", placeholder="مثلاً: ما هي الثغرات الممكنة في هذا العقد؟", height=150)
 
-u_query = st.text_area("ما هو استفسارك القانوني؟", height=150)
-
-if st.button("تحليل المستندات الآن ⚖️", use_container_width=True):
-    if not api_key:
-        st.error("يرجى إدخال المفتاح أولاً")
-    elif not vector_index:
-        st.error("لا توجد ملفات صالحة للتحليل في مجلد documents.")
+if st.button("تحليل قانوني معمق 🚀"):
+    if not key:
+        st.error("برجاء إدخال مفتاح Gemini للاستمرار.")
     else:
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=key)
+        lib, texts = read_docs()
+        
         try:
-            # اختيار الموديل التلقائي
-            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            m_id = next((m for m in models if '1.5-pro' in m), models[0])
-            model = genai.GenerativeModel(m_id)
+            ai = genai.GenerativeModel('gemini-1.5-pro')
             
-            with st.spinner("جاري تحليل الملفات المتاحة..."):
-                q_vec = embed_model.encode([u_query])
-                D, I = vector_index.search(np.array(q_vec).astype('float32'), k=5)
-                
-                context = ""
-                images = []
-                for idx in I[0]:
-                    if idx != -1:
-                        m = library[idx]
-                        if m['type'] == "image":
-                            try:
-                                img = Image.open(os.path.join(DOCS_DIR, m['file'])).convert("RGB")
-                                images.append(img)
-                            except:
-                                st.error(f"❌ مشكلة في الصورة: {m['file']}")
-                                continue
-                        context += f"\n[{m['file']}, {m['page']}]\n{m['text']}\n"
+            context = ""
+            imgs = []
+            
+            # إذا وجدت ملفات، ابحث فيها لتعزيز الإجابة
+            if lib:
+                with st.spinner("جاري استحضار الأدلة من ملفاتك..."):
+                    vecs = model_engine.encode(texts)
+                    index = faiss.IndexFlatL2(vecs.shape[1])
+                    index.add(np.array(vecs).astype('float32'))
+                    _, I = index.search(np.array(model_engine.encode([query])).astype('float32'), k=3)
+                    
+                    for idx in I[0]:
+                        if idx < len(lib):
+                            item = lib[idx]
+                            if item['type'] == "image":
+                                img = Image.open(os.path.join(DIR, item['f'])).convert("RGB")
+                                imgs.append(img)
+                            context += f"\n[من مستنداتك: {item['f']}]\n{item['t']}\n"
 
-                prompt = f"حلل كخبير قانوني وبالعربية. السياق: {context}\nالسؤال: {u_query}"
-                response = model.generate_content([prompt] + images if images else prompt)
+            # توجيه Gemini ليكون "محامي مصري داهية"
+            system_instruction = f"""
+            أنت الآن 'المستشار القانوني'، محامٍ مصري خبير جداً، مطلع على كافة القوانين المصرية (مدني، جنائي، نقض، إلخ) وتاريخها.
+            شخصيتك: ذكي، عملي، تبحث عن الحلول غير التقليدية، وتعرف كيف تتفادى المعوقات الإجرائية في مصر.
+            المهمة:
+            1. حلل السؤال بناءً على خبرتك القانونية العامة أولاً.
+            2. استخدم النصوص المرفقة من الملفات (إن وجدت) لتعزيز الإجابة بالدليل.
+            3. قدم حلولاً ذكية ومسارات بديلة (استراتيجيات قانونية).
+            
+            المعطيات من الملفات: {context}
+            سؤال المستخدم: {query}
+            """
+            
+            with st.spinner("جاري صياغة الاستراتيجية القانونية..."):
+                res = ai.generate_content([system_instruction] + imgs)
+                st.success("تم الانتهاء من التحليل!")
                 
-                st.markdown("---")
-                st.markdown(f'<div class="legal-card">{response.text}</div>', unsafe_allow_html=True)
+                # عرض النتيجة بشكل منظم وجميل
+                st.markdown(f"""
+                <div style='background-color: #ffffff; padding: 25px; border-radius: 15px; border-right: 8px solid #1e3a8a; box-shadow: 2px 2px 10px rgba(0,0,0,0.1); color: #1a1a1a;'>
+                    {res.text}
+                </div>
+                """, unsafe_allow_html=True)
                 
         except Exception as e:
-            st.error(f"حدث خطأ أثناء التحليل: {str(e)}")
+            st.error(f"عذراً، حدث خطأ تقني: {str(e)}")
