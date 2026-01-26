@@ -1,8 +1,7 @@
-google-generativeai
 streamlit
+google-generativeai
 pymupdf
 fpdf
-pandas
-openpyxl
-thefuzz
-python-levenshtein
+sentence-transformers
+faiss-cpu
+numpy
