@@ -6,15 +6,15 @@ import faiss
 import numpy as np
 from PIL import Image
 
-# 1. إعداد الواجهة لتكون احترافية ومنظمة (سهلة للعين)
+# 1. إعدادات الواجهة (احترافية ومنظمة)
 st.set_page_config(page_title="المستشار القانوني الذكي", layout="centered")
 
-# تنسيق المتصفح ليدعم اللغة العربية والخطوط المريحة
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     * { direction: rtl; text-align: right; font-family: 'Cairo', sans-serif; }
-    .stTextArea textarea { font-size: 1.1em !important; }
+    .stTextArea textarea { font-size: 1.1em !important; border-radius: 10px !important; }
+    .legal-box { background-color: #ffffff; padding: 20px; border-radius: 15px; border-right: 8px solid #1e3a8a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: #1a1a1a; line-height: 1.8; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -45,32 +45,37 @@ def read_docs():
         except: continue
     return data, raw_texts
 
-# --- الواجهة الجديدة ---
-st.title("⚖️ المستشار القانوني المصري الذكي")
-st.info("مرحباً بك. أنا مستشارك القانوني، أدمج بين نصوص ملفاتك وبين خبرتي العميقة بالقانون المصري لإيجاد أفضل الحلول.")
+# --- الواجهة ---
+st.title("⚖️ المستشار القانوني (نسخة الحلول الذكية)")
+st.write("خبير في القانون المصري، يدمج بين مستنداتك وذكاء 'محامي الشارع' المتمرس.")
 
-# ميزة الملء التلقائي للمفتاح (Auto-fill)
-# أضفنا وسوم HTML تجعل المتصفح يتعرف عليه ككلمة مرور محفوظة
-key = st.text_input("المفتاح السري (Gemini Key):", type="password", help="سيقوم المتصفح باقتراح المفتاح إذا قمت بحفظه مسبقاً", autocomplete="current-password")
+# ميزة الملء التلقائي للمفتاح
+key = st.text_input("المفتاح السري (Gemini Key):", type="password", autocomplete="current-password")
 
-query = st.text_area("اشرح قضيتك أو سؤالك هنا:", placeholder="مثلاً: ما هي الثغرات الممكنة في هذا العقد؟", height=150)
+query = st.text_area("اشرح الموقف القانوني أو السؤال:", placeholder="اكتب سؤالك هنا بوضوح...", height=150)
 
-if st.button("تحليل قانوني معمق 🚀"):
+if st.button("تحليل الاستراتيجية القانونية 🚀"):
     if not key:
-        st.error("برجاء إدخال مفتاح Gemini للاستمرار.")
+        st.error("برجاء إدخال مفتاح الـ API أولاً.")
     else:
-        genai.configure(api_key=key)
-        lib, texts = read_docs()
-        
         try:
-            ai = genai.GenerativeModel('gemini-1.5-pro')
+            genai.configure(api_key=key)
             
+            # --- حل مشكلة الـ 404 تلقائياً ---
+            # البحث عن أفضل موديل متاح يدعم توليد المحتوى
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # نفضل Pro، إذا لم يوجد نأخذ Flash، إذا لم يوجد نأخذ أول واحد متاح
+            selected_model = next((m for m in available_models if "1.5-pro" in m), 
+                                 next((m for m in available_models if "1.5-flash" in m), available_models[0]))
+            
+            ai = genai.GenerativeModel(selected_model)
+            
+            lib, texts = read_docs()
             context = ""
             imgs = []
             
-            # إذا وجدت ملفات، ابحث فيها لتعزيز الإجابة
             if lib:
-                with st.spinner("جاري استحضار الأدلة من ملفاتك..."):
+                with st.spinner("جاري فحص المستندات الملحقة..."):
                     vecs = model_engine.encode(texts)
                     index = faiss.IndexFlatL2(vecs.shape[1])
                     index.add(np.array(vecs).astype('float32'))
@@ -82,31 +87,25 @@ if st.button("تحليل قانوني معمق 🚀"):
                             if item['type'] == "image":
                                 img = Image.open(os.path.join(DIR, item['f'])).convert("RGB")
                                 imgs.append(img)
-                            context += f"\n[من مستنداتك: {item['f']}]\n{item['t']}\n"
+                            context += f"\n[دليل من ملف: {item['f']} - صفحة {item['p']}]\n{item['t']}\n"
 
-            # توجيه Gemini ليكون "محامي مصري داهية"
-            system_instruction = f"""
-            أنت الآن 'المستشار القانوني'، محامٍ مصري خبير جداً، مطلع على كافة القوانين المصرية (مدني، جنائي، نقض، إلخ) وتاريخها.
-            شخصيتك: ذكي، عملي، تبحث عن الحلول غير التقليدية، وتعرف كيف تتفادى المعوقات الإجرائية في مصر.
-            المهمة:
-            1. حلل السؤال بناءً على خبرتك القانونية العامة أولاً.
-            2. استخدم النصوص المرفقة من الملفات (إن وجدت) لتعزيز الإجابة بالدليل.
-            3. قدم حلولاً ذكية ومسارات بديلة (استراتيجيات قانونية).
+            # توجيه العقل الذكي (System Instruction)
+            prompt = f"""
+            بصفتك مستشاراً قانونياً مصرياً داهية، حلل الآتي بذكاء وخبرة عملية:
             
-            المعطيات من الملفات: {context}
+            1. ابدأ برؤية قانونية عامة طبقاً للقوانين المصرية المعمول بها.
+            2. ادمج المعلومات من المستندات التالية (إن وجدت): {context}
+            3. فكر في 'مخارج' أو 'ثغرات' أو 'تحذيرات' قد لا ينتبه لها المبتدئ.
+            4. اجعل الإجابة مرتبة في نقاط واضحة.
+            
             سؤال المستخدم: {query}
             """
             
-            with st.spinner("جاري صياغة الاستراتيجية القانونية..."):
-                res = ai.generate_content([system_instruction] + imgs)
-                st.success("تم الانتهاء من التحليل!")
-                
-                # عرض النتيجة بشكل منظم وجميل
-                st.markdown(f"""
-                <div style='background-color: #ffffff; padding: 25px; border-radius: 15px; border-right: 8px solid #1e3a8a; box-shadow: 2px 2px 10px rgba(0,0,0,0.1); color: #1a1a1a;'>
-                    {res.text}
-                </div>
-                """, unsafe_allow_html=True)
+            with st.spinner(f"جاري التحليل باستخدام {selected_model}..."):
+                res = ai.generate_content([prompt] + imgs)
+                st.success("تم تحليل الموقف بنجاح!")
+                st.markdown(f"<div class='legal-box'>{res.text}</div>", unsafe_allow_html=True)
                 
         except Exception as e:
-            st.error(f"عذراً، حدث خطأ تقني: {str(e)}")
+            st.error(f"حدث خطأ: {str(e)}")
+            st.info("نصيحة: تأكد أن مفتاح الـ API صحيح وأن لديك صلاحية الوصول لموديلات Gemini.")
