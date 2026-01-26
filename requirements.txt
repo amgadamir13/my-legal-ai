@@ -1,8 +1,8 @@
-openai
+google-generativeai
 streamlit
 pymupdf
+fpdf
 pandas
 openpyxl
 thefuzz
 python-levenshtein
-Pillow
