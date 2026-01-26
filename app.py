@@ -72,15 +72,18 @@ if audit_btn and api_key:
             match = doc_library[idx]
             context_text += f"\n[Doc: {match['file']}, p.{match['page']}]\n{match['text'][:800]}\n"
 
-        # The "Strategist" Prompt
+        # The "Strategist" Prompt (Mimicking the link you liked)
         prompt = f"""
         Act as a Senior Legal Strategist. 
-        First, provide a narrative 'Case Theory' explaining the strategy.
-        Second, list specific 'Audit Findings' as a list.
-        Use the Evidence below:
+        Provide a response with the following sections:
+        1. EXECUTIVE SUMMARY: A high-level view.
+        2. CASE THEORY: The strategic interpretation of the facts.
+        3. EVIDENTIARY AUDIT: Specific findings with [File, p.X] citations.
+        
+        Evidence from Corpus:
         {context_text}
         
-        Question: {u_query}
+        Legal Inquiry: {u_query}
         """
         
         response = model.generate_content(prompt)
