@@ -2,3 +2,6 @@ openai
 thefuzz
 python-levenshtein
 PyMuPDF
+pandas
+openpyxl
+streamlit
