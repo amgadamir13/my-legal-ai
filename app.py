@@ -1,123 +1,149 @@
 import streamlit as st
-import os, fitz, json, re, base64
+import os, fitz, json, base64
 import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
 from fpdf import FPDF
 
-# --- 1. MOBILE & RTL CUSTOMIZATION ---
+# --- 1. MOBILE-FIRST & ARABIC RTL STYLING ---
 st.set_page_config(page_title="المحقق القانوني الذكي", layout="centered")
 
-# Custom CSS for Arabic UI and Mobile Feel
+# Enterprise CSS for Arabic Mobile UI
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    html, body, [class*="css"] {
+    
+    html, body, [class*="css"], .stMarkdown {
         font-family: 'Cairo', sans-serif;
         direction: rtl;
         text-align: right;
     }
-    .stTextArea textarea { text-align: right; direction: rtl; }
-    .stButton button { width: 100%; border-radius: 20px; height: 3em; background-color: #004a99; color: white; }
-    .main-header { font-size: 24px; font-weight: bold; color: #004a99; text-align: center; margin-bottom: 20px; }
-    .card { background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 10px; }
+    /* Mobile-friendly buttons */
+    .stButton > button {
+        width: 100%;
+        border-radius: 25px;
+        height: 3.5em;
+        background-color: #1A73E8;
+        color: white;
+        font-weight: bold;
+        border: none;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    /* Card style for results */
+    .report-card {
+        background: white;
+        padding: 20px;
+        border-radius: 15px;
+        border-right: 5px solid #1A73E8;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .gemini-logo { display: block; margin: 0 auto 10px auto; width: 60px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ENGINE SETUP ---
+# --- 2. THE INTELLIGENCE ENGINE ---
 @st.cache_resource
-def load_brain_model():
+def load_engine():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
-embed_model = load_brain_model()
-DOCS_FOLDER = "documents"
+embed_model = load_engine()
+CORPUS_DIR = "documents"
 
 @st.cache_data
-def build_index():
-    metadata, texts = [], []
-    if not os.path.exists(DOCS_FOLDER): os.makedirs(DOCS_FOLDER)
-    files = [f for f in os.listdir(DOCS_FOLDER) if f.lower().endswith(".pdf")]
+def index_documents():
+    meta, texts = [], []
+    if not os.path.exists(CORPUS_DIR): os.makedirs(CORPUS_DIR)
+    files = [f for f in os.listdir(CORPUS_DIR) if f.lower().endswith(".pdf")]
     if not files: return None, None
     for f in files:
-        path = os.path.join(DOCS_FOLDER, f)
+        path = os.path.join(CORPUS_DIR, f)
         try:
             with fitz.open(path) as doc:
                 for i, page in enumerate(doc):
-                    content = page.get_text().strip()
-                    if content:
-                        metadata.append({"file": f, "page": i+1, "text": content})
-                        texts.append(content)
+                    t = page.get_text().strip()
+                    if t:
+                        meta.append({"file": f, "page": i+1, "content": t})
+                        texts.append(t)
         except: continue
     if not texts: return None, None
     embeddings = embed_model.encode(texts)
     index = faiss.IndexFlatL2(embeddings.shape[1])
     index.add(np.array(embeddings).astype('float32'))
-    return index, metadata
+    return index, meta
 
-vector_index, doc_library = build_index()
+vector_index, library = index_documents()
 
-# --- 3. MOBILE INTERFACE (ARABIC) ---
-# Gemini Logo and Header
-st.image("https://www.gstatic.com/lamda/images/gemini_sparkle_v002.svg", width=50)
-st.markdown('<div class="main-header">المساعد القانوني الذكي (Gemini)</div>', unsafe_allow_html=True)
+# --- 3. MOBILE UI FRONT-END ---
+# Gemini Branding
+st.markdown('<img src="https://www.gstatic.com/lamda/images/gemini_sparkle_v002.svg" class="gemini-logo">', unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #1A73E8;'>المحقق القانوني الذكي</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-size: 0.9em; color: #666;'>نظام تحليل الأدلة واستخراج الاستراتيجيات القانونية</p>", unsafe_allow_html=True)
 
 with st.sidebar:
     st.header("⚙️ الإعدادات")
-    api_key = st.text_input("مفتاح API الخاص بـ Gemini", type="password")
-    st.divider()
+    api_key = st.text_input("مفتاح API (Gemini)", type="password")
     if vector_index:
-        st.success(f"تمت أرشفة {len(doc_library)} صفحة بنجاح")
+        st.success(f"تمت أرشفة {len(library)} صفحة قانونية")
     else:
-        st.error("المكتبة فارغة")
-    if st.button("تحديث المكتبة"):
+        st.warning("يرجى رفع ملفات PDF في مجلد documents")
+    if st.button("تحديث قاعدة البيانات"):
         st.cache_data.clear()
         st.rerun()
 
-u_query = st.text_area("أدخل استفسارك القانوني هنا:", placeholder="مثال: لخص مخاطر المسؤولية في هذه العقود...", height=150)
-audit_btn = st.button("تحليل المستندات الآن ⚖️")
+# User Input - Mobile Friendly
+u_query = st.text_area("ما هو استفسارك القانوني؟", placeholder="اكتب سؤالك هنا ليقوم المحقق الذكي بالبحث في الملفات...", height=120)
+execute_analysis = st.button("بدء التحليل الاستراتيجي ⚖️")
 
-# --- 4. EXECUTION ---
-if audit_btn and api_key:
+# --- 4. THE ANALYSIS & PDF EXPORT ---
+if execute_analysis and api_key:
     genai.configure(api_key=api_key)
     try:
+        # Selection of best available model
         model = genai.GenerativeModel('gemini-1.5-pro')
-        with st.spinner("جاري تحليل الأدلة وبناء الاستراتيجية..."):
-            query_vec = embed_model.encode([u_query])
-            distances, indexes = vector_index.search(np.array(query_vec).astype('float32'), k=5)
+        
+        with st.spinner("جاري فحص المستندات وبناء التقرير..."):
+            # Semantic Search
+            q_vec = embed_model.encode([u_query])
+            D, I = vector_index.search(np.array(q_vec).astype('float32'), k=5)
             
             context = ""
-            for idx in indexes[0]:
+            for idx in I[0]:
                 if idx != -1:
-                    m = doc_library[idx]
-                    context += f"\n[المستند: {m['file']}, صفحة.{m['page']}]\n{m['text'][:1000]}\n"
+                    match = library[idx]
+                    context += f"\n[المستند: {match['file']}, صفحة: {match['page']}]\n{match['content'][:800]}\n"
 
-            # Strategic Prompt in Arabic
+            # Arabic-First Strategic Prompt
             prompt = f"""
-            بصفتك شريكًا قانونيًا أول، قم بتحليل الأدلة التالية باللغة العربية.
-            يجب أن يتضمن الرد:
-            1. ملخص تنفيذي للموقف.
-            2. تحليل الاستراتيجية القانونية.
-            3. النتائج التفصيلية مع الإشارة للمستندات والصفحات [المستند، الصفحة].
+            بصفتك مستشارًا قانونيًا خبيرًا، قم بتحليل الأدلة التالية باللغة العربية.
+            يجب أن يكون الرد احترافيًا ومنظمًا كالتالي:
+            1. الملخص التنفيذي: (رؤية سريعة للموقف).
+            2. النظرية القانونية: (الاستراتيجية المقترحة بناءً على النصوص).
+            3. تفاصيل الأدلة: (قائمة بالنتائج مع ذكر اسم الملف ورقم الصفحة [ملف، صفحة]).
             
-            الأدلة: {context}
+            الأدلة المستخرجة: {context}
             السؤال: {u_query}
             """
+            
             response = model.generate_content(prompt)
             
+            # Displaying as a professional "Card"
             st.markdown("---")
-            st.markdown(f'<div class="card">{response.text}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="report-card">{response.text}</div>', unsafe_allow_html=True)
             
-            # PDF Export (Arabic support in PDF is complex, so we use a standard clean format)
+            # Easy Download Button
             pdf = FPDF()
             pdf.add_page()
-            pdf.add_font('Arial', '', 'Arial.ttf', uni=True) # Note: Requires a .ttf font file for Arabic
             pdf.set_font("Arial", size=12)
-            pdf.multi_cell(0, 10, response.text.encode('latin-1', 'ignore').decode('latin-1')) # Standard fallback
-            
+            # Standard PDF cleanup
+            clean_text = response.text.encode('latin-1', 'ignore').decode('latin-1')
+            pdf.multi_cell(0, 10, clean_text)
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            b64_pdf = base64.b64encode(pdf_bytes).decode()
-            st.markdown(f'<a href="data:application/pdf;base64,{b64_pdf}" download="Report.pdf"><button style="width:100%; padding:10px; background-color:#28a745; color:white; border:none; border-radius:15px;">📥 تحميل التقرير (PDF)</button></a>', unsafe_allow_html=True)
+            b64 = base64.b64encode(pdf_bytes).decode()
+            
+            st.markdown(f'<a href="data:application/pdf;base64,{b64}" download="Legal_Report.pdf"><button style="background-color: #28a745;">📥 تحميل التقرير المعتمد (PDF)</button></a>', unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"حدث خطأ: {str(e)}")
+        st.error(f"خطأ في النظام: {str(e)}")
