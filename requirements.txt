@@ -1,7 +1,7 @@
 streamlit
 google-generativeai
 pymupdf
-fpdf
 sentence-transformers
 faiss-cpu
 numpy
+Pillow
