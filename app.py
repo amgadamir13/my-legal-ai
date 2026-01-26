@@ -1,64 +1,60 @@
-import streamlit as st
-import google.generativeai as genai
+import os
+import fitz  # مكتبة PyMuPDF لقراءة الـ PDF
+import openai
+from verification import verify_citations
 
-# 1. Page Configuration
-st.set_page_config(page_title="AI Legal Consultant", page_icon="⚖️")
-st.title("⚖️ Private Legal AI")
+# إعدادات المجلد والمفتاح
+DOCS_FOLDER = "./documents"
+openai.api_key = "ضع_مفتاحك_هنا"
 
-# 2. Secure API Connection
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    
-    # 3. Legal Persona System Instructions
-    instructions = """
-    You are a high-level Legal Consultant. 
-    1. Tone: Professional, precise, and empathetic. 
-    2. Format: Use bolding for key terms and bullet points for clarity.
-    3. Strategy: Analyze risks, identify loopholes, and provide actionable next steps.
-    4. Constraint: Always clarify you are an AI, not a human attorney.
-    """
+SYSTEM_INSTRUCTION = """
+You are a Bilingual Legal Expert (Arabic/English).
+1. Analyze as Compliance, Risk, and Drafting Agents.
+2. Provide citations for EVERY fact: [Document Name, p. PageNumber].
+3. Answer in the same language as the user's question.
+4. If the info isn't in the docs, say 'Not found in sources'.
+"""
 
-    model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
-        system_instruction=instructions
+def load_pdf_documents():
+    """لقراءة كافة ملفات الـ PDF في المجلد"""
+    docs_db = {}
+    if not os.path.exists(DOCS_FOLDER):
+        return docs_db
+        
+    for filename in os.listdir(DOCS_FOLDER):
+        if filename.endswith(".pdf"):
+            path = os.path.join(DOCS_FOLDER, filename)
+            doc = fitz.open(path)
+            # تخزين كل صفحة كنص مستقل
+            docs_db[filename] = [page.get_text() for page in doc]
+    return docs_db
+
+def get_ai_response(user_query):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": SYSTEM_INSTRUCTION},
+            {"role": "user", "content": user_query}
+        ]
     )
+    return response.choices[0].message.content
 
-    # 4. Initialize Chat History
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    # 5. Fixed "Save History" Button
-    # This button appears at the top once you start talking
-    if st.session_state.messages:
-        chat_text = ""
-        for m in st.session_state.messages:
-            chat_text += f"{m['role'].upper()}: {m['content']}\n\n"
+def run_app(user_input):
+    # 1. تحميل المستندات
+    all_docs = load_pdf_documents()
+    
+    # 2. الحصول على إجابة الذكاء الاصطناعي
+    answer = get_ai_response(user_input)
+    
+    # 3. التحقق من صحة المراجع (Lie Detector)
+    checks = verify_citations(answer, all_docs)
+    
+    # 4. التنسيق النهائي للشاشة (عربي وإنجليزي)
+    report = f"### ⚖️ التحليل القانوني / Legal Analysis\n\n{answer}\n\n---\n"
+    report += "### 🛡️ فحص الدقة / Accuracy Check\n"
+    
+    for c in checks:
+        status = "✅ موثق" if c['verified'] else "❌ مخاطرة (هلوسة)"
+        report += f"* {c['source']} (p.{c['page']}): {status} ({c['score']}%)\n"
         
-        st.download_button(
-            label="📥 Download Consultation History",
-            data=chat_text,
-            file_name="legal_consultation.txt",
-            mime="text/plain"
-        )
-        st.divider()
-
-    # 6. Display Chat History
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    # 7. Chat Input Logic
-    if prompt := st.chat_input("How can I assist you with your legal query?"):
-        # Display User Message
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Generate and Display AI Response
-        with st.chat_message("assistant"):
-            response = model.generate_content(prompt)
-            st.markdown(response.text)
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-
-else:
-    st.error("Missing API Key! Please add 'GEMINI_API_KEY' to your Streamlit Secrets.")
+    return report
