@@ -51,9 +51,15 @@ with st.form("prosecutor_form"):
         else:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                with st.spinner("Gemini is reviewing files..."):
+                # --- SMART MODEL SELECTION (Fixes 404 Error) ---
+                # It tries Flash first, falls back to Pro if needed
+                try:
+                    model = genai.GenerativeModel('gemini-1.5-pro')
+                except:
+                    model = genai.GenerativeModel('gemini-pro')
+                
+                with st.spinner("Analyzing Vault..."):
                     context = ""
                     for name, pages in all_docs.items():
                         for i, txt in enumerate(pages):
@@ -69,17 +75,19 @@ with st.form("prosecutor_form"):
                     st.write(response.text)
 
             except Exception as e:
-                st.error(f"Gemini Error: {str(e)}")
+                st.error(f"⚠️ Model Access Error: {str(e)}")
+                st.info("Tip: Ensure your API Key is from the Google AI Studio (Google Cloud projects sometimes use different versions).")
 
 # --- 5. EXPORT TO PDF ---
 if 'last_analysis' in st.session_state:
-    if st.button("📄 Export Findings to PDF"):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, st.session_state['last_analysis'].encode('latin-1', 'ignore').decode('latin-1'))
-        
-        pdf_output = pdf.output(dest='S').encode('latin-1')
-        b64 = base64.b64encode(pdf_output).decode()
-        href = f'<a href="data:application/octet-stream;base64,{b64}" download="Legal_Analysis.pdf" style="text-decoration:none;"><button style="width:100%; height:3em; background-color:#4CAF50; color:white; border:none; border-radius:15px; font-weight:bold;">📥 DOWNLOAD PDF TO IPHONE</button></a>'
-        st.markdown(href, unsafe_allow_html=True)
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    # Cleaning text for basic PDF format
+    clean_text = st.session_state['last_analysis'].encode('latin-1', 'ignore').decode('latin-1')
+    pdf.multi_cell(0, 10, clean_text)
+    
+    pdf_output = pdf.output(dest='S').encode('latin-1')
+    b64 = base64.b64encode(pdf_output).decode()
+    href = f'<a href="data:application/octet-stream;base64,{b64}" download="Legal_Analysis.pdf"><button style="width:100%; height:3em; background-color:#4CAF50; color:white; border:none; border-radius:15px; font-weight:bold;">📥 DOWNLOAD PDF</button></a>'
+    st.markdown(href, unsafe_allow_html=True)
