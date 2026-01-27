@@ -3,6 +3,7 @@ import google.generativeai as genai
 import fitz  # PyMuPDF
 import io
 import traceback
+import re
 from typing import List
 
 # --------------------
@@ -21,11 +22,12 @@ st.markdown(
         font-family: 'Cairo', sans-serif !important;
     }
 
+    /* اجعل التفاف الكلمات والسلو�� الافتراضي آمناً للغات المتصلة (العربية) */
     .stMarkdown p, .stMarkdown div {
         display: block !important;
         white-space: pre-wrap !important;
-        word-break: keep-all !important;
-        overflow-wrap: normal !important;
+        word-break: normal !important;
+        overflow-wrap: break-word !important;
         min-width: 320px !important;
     }
 
@@ -38,7 +40,7 @@ st.markdown(
         box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         width: 100% !important;
         background-color: #ffffff;
-        display: inline-block !important;
+        display: block !important;
     }
 
     .user-style { border-color: #1e3a8a; background-color: #f8fafc; color: #1e3a8a; }
@@ -50,7 +52,7 @@ st.markdown(
         box-shadow: 0 4px 10px rgba(0,0,0,0.05);
         display: block !important;
         width: 100% !important;
-        word-break: keep-all !important;
+        word-break: normal !important;
     }
 
     input[type="password"] { direction: ltr !important; text-align: left !important; }
@@ -91,6 +93,30 @@ with st.sidebar:
 st.title("⚖️ Strategic War Room Pro")
 
 # --------------------
+# مساعدة: تنظيف/تطبيع نص عربي مستخرج من PDF
+# --------------------
+def normalize_arabic_text(text: str) -> str:
+    """
+    يقوم بما يلي لتقليل مشكلة الحروف المتقطعة/المكدسة:
+      - يزيل zero-width non-joiner/joiner (U+200C, U+200D)
+      - يزيل المسافات أو الأسطر بين الحروف العربية (يعيد ربطها)
+      - يقلص الفراغات المتكررة ويحافظ على فواصل الفقرات المعقولة
+    هذا يعتمد على هيورستيكس بسيطة لتجنب حذف فواصل الكلمات الحقيقية بالإنجليزية.
+    """
+    if not text:
+        return ""
+    # إزالة zero-width joiner/non-joiner
+    text = text.replace("\u200c", "").replace("\u200d", "")
+    # امسح الأسطر أو الفراغات بين الحروف العربية حتى لا تظهر منفصلة
+    text = re.sub(r'(?<=[\u0600-\u06FF])\s*\n\s*(?=[\u0600-\u06FF])', '', text)
+    text = re.sub(r'(?<=[\u0600-\u06FF])\s+(?=[\u0600-\u06FF])', '', text)
+    # تقليص فراغات غير ضرورية (حافظ على فقرتين كحد أقصى)
+    text = re.sub(r'\r\n', '\n', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r'[ \t\f\v]{2,}', ' ', text)
+    return text.strip()
+
+# --------------------
 # مساعدة: استخراج نص من ملفات PDF (PyMuPDF)
 # --------------------
 def get_text_from_files(files: List[st.runtime.uploaded_file_manager.UploadedFile]) -> str:
@@ -111,7 +137,8 @@ def get_text_from_files(files: List[st.runtime.uploaded_file_manager.UploadedFil
         except Exception:
             # تخطي الملفات غير الصحيحة، تابع باقي الملفات
             continue
-    return text.strip()
+    # طابق/نظف نصوص اللغة العربية المحتملة قبل الإرجاع
+    return normalize_arabic_text(text)
 
 # --------------------
 # مساعدة: استخراج النص من شكل الاستجابة المتغير لـ Gemini
@@ -253,7 +280,7 @@ if (btn_L or btn_P or btn_S):
         # بناء البرومبت بصيغة واضحة ومحددة
         prompt = (
             "أنت مستشار استراتيجي قانوني/نفسي/تفاوضي ذو خبرة. "
-            "اقرأ المعلومات التال��ة ثم أجب بدقة وبصيغة عملية مع نقاط قابلة للتنفيذ.\n\n"
+            "اقرأ المعلومات التالية ثم أجب بدقة وبصيغة عملية مع نقاط قابلة للتنفيذ.\n\n"
             f"الهوية المطلوبة: {identity}\n\n"
             f"الحقائق (Vault):\n{v_ctx_snippet}\n\n"
             f"ملفات الخصم (Opponent):\n{o_ctx_snippet}\n\n"
@@ -294,7 +321,7 @@ if st.session_state.chat_history:
         """
         <div class="finding-card">
             <b style="color: #1e3a8a;">⚖️ الثغرات المستخرجة:</b><br>
-            تم تحليل البيانات وستظهر النتائج هنا بشكل أفقي سليم تماماً.
+            تم تحليل البيان��ت وستظهر النتائج هنا بشكل أفقي سليم تماماً.
         </div>
         <div class="finding-card" style="border-right-color: #8b5cf6;">
             <b style="color: #8b5cf6;">🧠 نمط الخصم:</b><br>
