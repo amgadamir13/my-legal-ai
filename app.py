@@ -22,7 +22,7 @@ st.markdown(
         font-family: 'Cairo', sans-serif !important;
     }
 
-    /* اجعل التفاف الكلمات والسلو�� الافتراضي آمناً للغات المتصلة (العربية) */
+    /* اجعل التفاف الكلمات والسلوك الافتراضي آمناً للغات المتصلة (العربية) */
     .stMarkdown p, .stMarkdown div {
         display: block !important;
         white-space: pre-wrap !important;
@@ -134,8 +134,16 @@ def get_text_from_files(files: List[st.runtime.uploaded_file_manager.UploadedFil
                     page_text = page.get_text()
                     if page_text:
                         text += page_text + "\n"
-        except Exception:
+        except Exception as ex:
             # تخطي الملفات غير الصحيحة، تابع باقي الملفات
+            # عرض الاستثناء أثناء التصحيح حتى نعرف سبب الفشل
+            if 'show_raw' in globals() and show_raw:
+                try:
+                    st.error(f"خطأ عند قراءة الملف: {getattr(f, 'name', 'uploaded_file')}")
+                    st.exception(ex)
+                except Exception:
+                    # في حالة عدم إمكان عرض UI هنا، تجاهل
+                    pass
             continue
     # طابق/نظف نصوص اللغة العربية المحتملة قبل الإرجاع
     return normalize_arabic_text(text)
@@ -302,7 +310,14 @@ if (btn_L or btn_P or btn_S):
         except Exception as e:
             # عرض خطأ واضح + تتبع الاستثناء للمساعدة في التصحيح
             st.error(f"حدث خطأ أثناء استدعاء Gemini: {e}")
-            st.exception(traceback.format_exc())
+            # عرض الاستثناء نفسه (هذا يتيح لستريمليت استخراج الstack trace)
+            try:
+                st.exception(e)
+                if 'show_raw' in globals() and show_raw:
+                    st.text(traceback.format_exc())
+            except Exception:
+                # إذا فشل عرض الاستثناء في الـ UI، فاطبع السطر الأخير كاحتياط
+                st.text(f"Exception: {e}")
 
 # --------------------
 # عرض المحادثة
@@ -321,7 +336,7 @@ if st.session_state.chat_history:
         """
         <div class="finding-card">
             <b style="color: #1e3a8a;">⚖️ الثغرات المستخرجة:</b><br>
-            تم تحليل البيان��ت وستظهر النتائج هنا بشكل أفقي سليم تماماً.
+            تم تحليل البيانات وستظهر النتائج هنا بشكل أفقي سليم تماماً.
         </div>
         <div class="finding-card" style="border-right-color: #8b5cf6;">
             <b style="color: #8b5cf6;">🧠 نمط الخصم:</b><br>
