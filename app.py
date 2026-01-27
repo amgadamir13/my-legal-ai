@@ -3,9 +3,10 @@ import streamlit as st
 import google.generativeai as genai
 import fitz  # PyMuPDF
 import re
+from datetime import datetime
 
 # =============================================
-# 1. إعدادات الواجهة (منع الحروف المقطوعة نهائياً)
+# 1. إعدادات الواجهة والخطوط العربية (RTL Fix)
 # =============================================
 st.set_page_config(page_title="Strategic War Room Pro", layout="wide")
 
@@ -13,14 +14,14 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     
+    /* منع تقطع الحروف العربية وضمان العرض الأفقي */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] p {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Cairo', sans-serif !important;
         white-space: pre-wrap !important;
-        word-break: keep-all !important; /* الضمان النهائي ضد م-ف-ت-ا-ح */
+        word-break: keep-all !important; 
         overflow-wrap: normal !important;
-        line-height: 1.8 !important;
     }
     
     .msg-box { 
@@ -30,119 +31,93 @@ st.markdown("""
     }
     
     .user-style { border-color: #1e3a8a; background-color: #f8fafc; color: #1e3a8a; }
-    .legal { border-color: #3b82f6; background-color: #eff6ff; color: #1e3a8a; }
-    .psych { border-color: #8b5cf6; background-color: #f5f3ff; color: #2e1065; }
-    .strat { border-color: #f59e0b; background-color: #fffbeb; color: #451a03; }
+    .legal { border-color: #3b82f6; background-color: #eff6ff; }
+    .psych { border-color: #8b5cf6; background-color: #f5f3ff; }
+    .strat { border-color: #f59e0b; background-color: #fffbeb; }
     
-    .stButton > button { width: 100%; border-radius: 12px; font-weight: 700; background: #1e3a8a; color: white; height: 3.5em; }
+    /* تنسيق قسم التقرير النهائي */
+    .finding-card {
+        background: #ffffff; padding: 20px; border-radius: 12px;
+        border: 1px solid #e2e8f0; margin-top: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # =============================================
-# 2. وظائف معالجة النصوص والملفات
+# 2. وظائف المعالجة
 # =============================================
-def normalize_arabic_text(text):
+def normalize_text(text):
     if not text: return ""
-    # تنظيف الرموز غير المرئية التي تسبب تقطع الحروف في PDF
     text = re.sub(r'[\u200b-\u200f\u202a-\u202e]', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+    return re.sub(r'\s+', ' ', text).strip()
 
-def extract_text_from_pdf(file_obj):
+def extract_pdf_text(file_obj):
     try:
         text = ""
-        # قراءة محتوى الملف مباشرة من الذاكرة
-        file_bytes = file_obj.read()
-        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-            for page in doc: 
-                text += page.get_text() + " "
-        return normalize_arabic_text(text)
-    except Exception as e: 
-        return f"خطأ في قراءة الملف: {e}"
+        with fitz.open(stream=file_obj.read(), filetype="pdf") as doc:
+            for page in doc: text += page.get_text() + " "
+        return normalize_text(text)
+    except Exception as e: return f"Error: {e}"
 
 # =============================================
-# 3. واجهة المستخدم والذاكرة
+# 3. محرك التطبيق والذاكرة
 # =============================================
-if "chat_history" not in st.session_state: 
-    st.session_state.chat_history = []
+if "history" not in st.session_state: st.session_state.history = []
 
 with st.sidebar:
-    st.header("🛡️ الإعدادات الاستراتيجية")
-    api_key = st.text_input("Gemini API Key:", type="password")
-    
-    model_choice = st.selectbox("الموديل المستهدف:", [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
-    ])
-    
-    st.divider()
-    v_files = st.file_uploader("📂 خزنة الأدلة (Vault)", type=["pdf"], accept_multiple_files=True)
-    o_files = st.file_uploader("⚔️ ملفات الخصم (Opponent)", type=["pdf"], accept_multiple_files=True)
-    
-    if st.button("🗑️ مسح الجلسة"): 
-        st.session_state.chat_history = []
+    st.header("🛡️ الإعدادات")
+    key = st.text_input("Gemini API Key:", type="password")
+    model_name = st.selectbox("الموديل:", ["gemini-1.5-flash", "gemini-1.5-pro"])
+    v_files = st.file_uploader("📂 الخزنة", type=["pdf"], accept_multiple_files=True)
+    o_files = st.file_uploader("⚔️ الخصم", type=["pdf"], accept_multiple_files=True)
+    if st.button("🗑️ مسح"): 
+        st.session_state.history = []
         st.rerun()
 
 st.title("⚖️ Strategic War Room Pro")
 
-# عرض تاريخ المحادثة
-for chat in st.session_state.chat_history:
+for chat in st.session_state.history:
     st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-# منطقة الإدخال
 with st.form("main_form", clear_on_submit=True):
-    u_query = st.text_area("اشرح الموقف أو اطلب تحليل الملفات:")
+    query = st.text_area("اشرح الموقف:")
     c1, c2, c3 = st.columns(3)
     with c1: btn_L = st.form_submit_button("⚖️ قانوني")
     with c2: btn_P = st.form_submit_button("🧠 نفسي")
     with c3: btn_S = st.form_submit_button("🧨 داهية")
 
-# =============================================
-# 4. محرك التنفيذ ومعالجة الطلبات
-# =============================================
-if (btn_L or btn_P or btn_S) and api_key and u_query:
+if (btn_L or btn_P or btn_S) and key and query:
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_choice)
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel(model_name)
+        v_txt = "".join([extract_pdf_text(f) for f in v_files]) if v_files else ""
+        o_txt = "".join([extract_pdf_text(f) for f in o_files]) if o_files else ""
         
-        # قراءة النصوص من الملفات المرفوعة
-        v_txt = ""
-        if v_files:
-            for f in v_files: v_txt += extract_text_from_pdf(f)
-            
-        o_txt = ""
-        if o_files:
-            for f in o_files: o_txt += extract_text_from_pdf(f)
-
-        # تحديد الشخصية
-        label, style, role = ("⚖️ القانوني", "legal", "خبير قانوني") if btn_L else \
-                             ("🧠 النفسي", "psych", "محلل نفسي") if btn_P else \
-                             ("🧨 الداهية", "strat", "استراتيجي مفاوضات")
+        label, style, role = ("⚖️ القانوني", "legal", "محامي") if btn_L else \
+                             ("🧠 النفسي", "psych", "خبير نفسي") if btn_P else \
+                             ("🧨 الداهية", "strat", "استراتيجي")
         
-        prompt = f"""
-        دورك: {role}.
-        سياقنا (خزنة الأدلة): {v_txt[:5000]}
-        ادعاءات الخصم: {o_txt[:5000]}
-        السؤال: {u_query}
-        حلل الموقف بعمق وكشف التناقضات بالعربية.
-        """
+        prompt = f"أنت {role}. سياقنا: {v_txt[:4000]}. الخصم: {o_txt[:4000]}. السؤال: {query}. أجب بالعربية."
         
-        with st.spinner("جاري استنتاج الرد الاستراتيجي..."):
-            response = model.generate_content(prompt)
-            st.session_state.chat_history.append({"label": label, "content": response.text, "style": style})
+        with st.spinner("جاري التحليل..."):
+            res = model.generate_content(prompt)
+            st.session_state.history.append({"label": label, "content": res.text, "style": style})
             st.rerun()
-            
-    except Exception as e:
-        st.error(f"⚠️ حدث خطأ: {e}")
+    except Exception as e: st.error(f"Error: {e}")
 
 # =============================================
-# 5. التقرير النهائي للتحميل
+# 4. قسم النتائج الرسمية (#Official-Findings)
 # =============================================
-if st.session_state.chat_history:
+if st.session_state.history:
     st.divider()
-    st.subheader("📋 التقرير الاستراتيجي (#Official-Findings)")
-    report_text = ""
-    for c in st.session_state.chat_history:
-        report_text += f"{c['label']}:\n{c['content']}\n{'-'*30}\n"
+    st.markdown('<div id="official-findings"></div>', unsafe_allow_html=True) # رابط الوصول السريع
+    st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
     
-    st.download_button("📥 تحميل التقرير كملف نصي", report_text, file_name="War_Room_Report.txt")
+    report = "\n".join([f"{c['label']}: {c['content']}" for c in st.session_state.history])
+    
+    st.download_button(
+        label="📥 تحميل التقرير الرسمي",
+        data=report,
+        file_name=f"Legal_Report_{datetime.now().strftime('%Y%m%d')}.txt",
+        mime="text/plain"
+    )
