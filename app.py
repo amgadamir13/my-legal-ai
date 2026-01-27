@@ -1,109 +1,113 @@
-# --------------------
-# استدعاء Gemini (تكملة الدالة الأساسية)
-# --------------------
-def call_gemini(prompt: str, model_name: str, api_key: str):
-    """
-    محرك الاتصال الذكي: يحاول استدعاء النموذج بأكثر من واجهة برمجية 
-    لضمان التوافق مع تحديثات مكتبة google-generativeai.
-    """
-    try:
-        genai.configure(api_key=api_key)
-        
-        # محاولة الوصول للنموذج
-        model = genai.GenerativeModel(model_name)
-        
-        # استدعاء الإنشاء مع معالجة الأخطاء الشائعة في الـ Safety Settings
-        response = model.generate_content(prompt)
-        
-        # استخراج النص بطريقة آمنة
-        answer = extract_text_from_response(response)
-        
-        if not answer or answer.strip() == "":
-             raise ValueError("استجابة النموذج فارغة أو تم حظرها.")
-             
-        return response, answer
+import streamlit as st
+import google.generativeai as genai
+import fitz  # PyMuPDF
+import io
+import traceback
+import re
+from typing import List
 
-    except Exception as e:
-        error_msg = f"فشل استدعاء Gemini: {str(e)}"
-        if "API_KEY_INVALID" in str(e):
-            error_msg = "مفتاح API غير صحيح. يرجى التأكد منه في الشريط الجانبي."
-        raise RuntimeError(error_msg)
+# 1. إعداد الصفحة ومنع الانهيار العمودي للنص
+st.set_page_config(page_title="Strategic War Room Pro", layout="wide")
 
-# --------------------
-# المحرك الاستراتيجي (الواجهة الأمامية)
-# --------------------
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] p {
+        direction: rtl !important; text-align: right !important;
+        font-family: 'Cairo', sans-serif !important;
+        white-space: pre-wrap !important;
+        word-break: keep-all !important; /* يمنع ظهور الحروف عمودياً */
+    }
+    .msg-box { 
+        padding: 20px; border-radius: 15px; margin-bottom: 20px; 
+        line-height: 1.8; border-right: 12px solid; 
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08); width: 100% !important;
+    }
+    .user-style { border-color: #1e3a8a; background-color: #f8fafc; color: #1e3a8a; }
+    .ai-style { border-color: #10b981; background-color: #f0fdf4; color: #14532d; }
+    .finding-card {
+        background: #ffffff; padding: 25px; border-radius: 15px;
+        margin-bottom: 20px; border-right: 8px solid #cbd5e1; width: 100% !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 2. تعريف الدوال الأساسية قبل استخدامها
+def normalize_arabic_text(text: str) -> str:
+    if not text: return ""
+    text = text.replace("\u200c", "").replace("\u200d", "")
+    text = re.sub(r'(?<=[\u0600-\u06FF])\s*\n\s*(?=[\u0600-\u06FF])', '', text)
+    return text.strip()
+
+def get_text_from_files(files) -> str:
+    text = ""
+    if not files: return ""
+    for f in files:
+        try:
+            with fitz.open(stream=f.read(), filetype="pdf") as doc:
+                for page in doc: text += page.get_text() + "\n"
+        except: continue
+    return normalize_arabic_text(text)
+
+# 3. إعداد حالة الجلسة
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# 4. الشريط الجانبي (تعريف المتغيرات أولاً)
+with st.sidebar:
+    st.title("🛡️ مركز القيادة")
+    api_key = st.text_input("مفتاح Gemini السري:", type="password")
+    model_name = st.selectbox("النموذج:", ["gemini-1.5-flash", "gemini-1.5-pro"])
+    st.divider()
+    v_files = st.file_uploader("قبو الحقائق (Vault):", accept_multiple_files=True)
+    o_files = st.file_uploader("ملفات الخصم (Opponent):", accept_multiple_files=True)
+    if st.button("تفريغ الذاكرة 🗑️"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+# 5. الواجهة الرئيسية والنموذج
+st.title("⚖️ Strategic War Room Pro")
+
 with st.form("war_room_form", clear_on_submit=True):
-    user_query = st.text_area("اشرح الموقف الحالي أو اطلب تحليل التناقضات:", height=120)
+    user_query = st.text_area("اشرح الموقف الحالي هنا:", height=100)
     c1, c2, c3 = st.columns(3)
     with c1: btn_L = st.form_submit_button("⚖️ قانوني")
     with c2: btn_P = st.form_submit_button("🧠 نفسي")
     with c3: btn_S = st.form_submit_button("🧨 داهية")
 
-if (btn_L or btn_P or btn_S) and api_key and user_query:
-    try:
-        # تحديد الشخصية
-        if btn_L: label, role, style = "⚖️ القانوني", "محامٍ جنائي متخصص في الثغرات", "legal-style"
-        elif btn_P: label, role, style = "🧠 النفسي", "محلل سلوكي يحلل لغة الجسد والنصوص", "psych-style"
-        else: label, role, style = "🧨 الداهية", "مفاوض استراتيجي يجد حلولاً خارج الصندوق", "street-style"
-
-        # قراءة المستندات
-        with st.spinner("جاري قراءة الملفات وتحليل البيانات..."):
-            v_text = get_text_from_files(v_files)
-            o_text = get_text_from_files(o_files)
-
-        # بناء البرومبت الاحترافي
-        full_prompt = f"""
-        تقمص دور: {role}.
-        سياق الحقائق (Vault): {v_text[:10000]}
-        ادعاءات الخصم (Opponent): {o_text[:10000]}
-        سؤال المستخدم: {user_query}
-        
-        المطلوب:
-        1. تحليل دقيق جداً للموقف.
-        2. كشف التناقضات بين الحقائق وادعاءات الخصم (إن وجدت).
-        3. اقتراح خطة عمل استراتيجية فورية.
-        أجب بالعربية الفصحى وبشكل نقاط واضحة.
-        """
-
-        with st.spinner(f"جاري معالجة الرد بواسطة {label}..."):
-            raw_resp, answer_text = call_gemini(full_prompt, model_name, api_key)
-            st.session_state.raw_last_response = raw_resp
+# 6. منطق التشغيل (Execution Logic)
+if (btn_L or btn_P or btn_S) and user_query:
+    if not api_key:
+        st.error("⚠️ يرجى إدخال مفتاح الـ API في الشريط الجانبي.")
+    else:
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
             
-            # إضافة للمحادثة
-            st.session_state.chat_history.append({"role": "user", "content": user_query, "label": "👤 أنت", "style": "user-style"})
-            st.session_state.chat_history.append({"role": "ai", "content": answer_text, "label": label, "style": style})
-            st.rerun()
+            # تحديد الهوية
+            label = "⚖️ القانوني" if btn_L else ("🧠 النفسي" if btn_P else "🧨 الداهية")
+            style = "ai-style"
+            
+            # جمع السياق
+            v_context = get_text_from_files(v_files)
+            o_context = get_text_from_files(o_files)
+            
+            prompt = f"حلل بدقة بالعربية: حقائقي: {v_context[:5000]}. ادعاءات الخصم: {o_context[:5000]}. السؤال: {user_query}"
+            
+            with st.spinner("جاري استحضار الاستراتيجية..."):
+                response = model.generate_content(prompt)
+                st.session_state.chat_history.append({"q": user_query, "a": response.text, "label": label, "style": style})
+                st.rerun()
+        except Exception as e:
+            st.error(f"خطأ تقني: {str(e)}")
 
-    except Exception as e:
-        st.error(f"⚠️ خطأ استراتيجي: {str(e)}")
-        if show_raw:
-            st.code(traceback.format_exc())
-
-# --------------------
-# عرض التاريخ (Chat Display)
-# --------------------
+# 7. عرض المحادثة
 for chat in st.session_state.chat_history:
-    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}:</b><br>{chat["content"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="msg-box user-style"><b>👤 أنت:</b><br>{chat["q"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}:</b><br>{chat["a"]}</div>', unsafe_allow_html=True)
 
-# --------------------
-# قسم النتائج الرسمية (Findings)
-# --------------------
+# 8. قسم النتائج الرسمية
 if st.session_state.chat_history:
     st.divider()
     st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
-    
-    # عرض Debug إذا تم تفعيله
-    if show_raw and st.session_state.raw_last_response:
-        with st.expander("🔍 تفاصيل الاستجابة الخام (Debug)"):
-            st.write(st.session_state.raw_last_response)
-
-    st.markdown("""
-        <div class="finding-card">
-            <b style="color: #1e3a8a;">⚖️ الخلاصة القانونية:</b><br>
-            يتم استخراج الثغرات بناءً على التناقضات المكتشفة في ملفات الخصم مقارنة بالحقائق الموثقة.
-        </div>
-        <div class="finding-card">
-            <b style="color: #10b981;">🎯 التوصية الفورية:</b><br>
-            اتبع استراتيجية "الهجوم المضاد بالوثائق" المذكورة في رد المستشار أعلاه.
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div class="finding-card"><b>🎯 التوصية:</b> راجع التحليل أعلاه لاستخراج الثغرات المباشرة.</div>', unsafe_allow_html=True)
