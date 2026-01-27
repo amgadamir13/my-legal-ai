@@ -1,126 +1,109 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import fitz  # PyMuPDF
+import fitz
 import io
 
-# --- 1. UI ARCHITECTURE (Arabic RTL Fixed) ---
+# --- 1. الهوية البصرية (تصميم عسكري استراتيجي) ---
 st.set_page_config(page_title="Strategic War Room", layout="centered")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     html, body, [data-testid="stAppViewContainer"] {
-        direction: rtl !important; 
-        text-align: right !important;
+        direction: rtl !important; text-align: right !important;
         font-family: 'Cairo', sans-serif !important;
-        background-color: #0f172a; color: #f8fafc;
+        background-color: #0f172a; /* لون داكن للتركيز */
     }
-    /* Fixed Arabic Text Areas */
-    textarea, input { 
-        direction: rtl !important; 
-        text-align: right !important; 
-        font-family: 'Cairo', sans-serif !important;
-    }
-    /* Password/API field stays LTR for accuracy */
+    .msg-box { padding: 20px; border-radius: 15px; margin-bottom: 15px; line-height: 1.8; border-right: 8px solid; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .user-style { background-color: #1e293b; border-color: #3b82f6; color: #f8fafc; }
+    .legal-style { background-color: #064e3b; border-color: #10b981; color: #ecfdf5; }
+    .psych-style { background-color: #4c1d95; border-color: #a855f7; color: #f5f3ff; }
+    .street-style { background-color: #7f1d1d; border-color: #f43f5e; color: #fff1f2; }
     input[type="password"] { direction: ltr !important; text-align: left !important; }
-    
-    .msg-box { padding: 22px; border-radius: 20px; margin-bottom: 15px; line-height: 1.8; }
-    .user-style { background-color: #1e293b; border-right: 8px solid #38bdf8; }
-    .ai-style { background-color: #1e293b; border-right: 8px solid #10b981; }
-    .psych-style { background-color: #2e1065; border-right: 8px solid #a855f7; }
-    .street-style { background-color: #450a0a; border-right: 8px solid #ef4444; }
-    
-    .stButton button { border-radius: 12px; height: 3.5em; background: linear-gradient(90deg, #0ea5e9, #2563eb); color: white; border: none; font-weight: bold; width: 100%; }
+    .stButton button { border-radius: 12px; height: 3.5em; font-weight: bold; border: none; transition: 0.3s; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. MEMORY MANAGEMENT ---
+# --- 2. الذاكرة الاستراتيجية ---
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# --- 3. COMMAND CENTER (SIDEBAR) ---
+# --- 3. مركز القيادة (القائمة الجانبية) ---
 with st.sidebar:
-    st.title("🛡️ مركز القيادة")
-    api_key = st.text_input("مفتاح Gemini (AIza...):", type="password")
-    
+    st.header("🛡️ مركز القيادة")
+    api_key = st.text_input("مفتاح Gemini السري:", type="password")
     st.divider()
-    st.subheader("🎯 ميثاق الاستراتيجية")
-    user_strategy = st.text_input("قيمنا (مثلاً: الصبر، الصدق، الهجوم):", placeholder="أدخل قيمك هنا...")
-    
+    strategy = st.text_input("القيم الحاكمة:", "الحكمة والهدوء")
     st.divider()
-    st.subheader("📁 ملفات القضية")
-    my_docs = st.file_uploader("حقائبي (Vault):", accept_multiple_files=True, key="v")
-    opp_docs = st.file_uploader("ملفات الخصم:", accept_multiple_files=True, key="o")
-    
+    v_files = st.file_uploader("قبو حقائقي (Vault)", accept_multiple_files=True)
+    o_files = st.file_uploader("ملفات الخصم (Opponent)", accept_multiple_files=True)
     if st.button("تصفير الذاكرة 🗑️"):
         st.session_state.chat_history = []
         st.rerun()
 
-st.title("⚖️ War Room: المحقق الاستراتيجي")
+st.title("⚖️ المحقق الاستراتيجي")
+st.caption("نظام العقول الثلاثة: قانوني | نفسي | داهية")
 
-# --- 4. CHAT DISPLAY ---
+# --- 4. عرض المحادثة ---
 for chat in st.session_state.chat_history:
-    style = "user-style" if chat["role"] == "user" else chat.get("style", "ai-style")
-    label = "👤 أنت" if chat["role"] == "user" else chat.get("label", "⚖️ المستشار")
+    style = chat.get("style", "user-style")
+    label = chat.get("label", "👤 أنت")
     st.markdown(f'<div class="msg-box {style}"><b>{label}:</b><br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-# --- 5. THE TRIPLE-BRAIN ENGINE ---
-with st.form("war_form", clear_on_submit=True):
-    user_query = st.text_area("اشرح الموقف أو التطور الجديد:", height=100)
-    col1, col2, col3 = st.columns(3)
-    with col1: legal_btn = st.form_submit_button("⚖️ قانوني")
-    with col2: psych_btn = st.form_submit_button("🧠 نفسي")
-    with col3: street_btn = st.form_submit_button("🧨 داهية")
+# --- 5. محرك العقول المتعددة ---
+with st.form("war_room_form", clear_on_submit=True):
+    user_query = st.text_area("اشرح الموقف الحالي هنا...", height=120)
+    c1, c2, c3 = st.columns(3)
+    with c1: btn_L = st.form_submit_button("⚖️ القانوني")
+    with c2: btn_P = st.form_submit_button("🧠 النفسي")
+    with c3: btn_S = st.form_submit_button("🧨 الداهية")
 
-if legal_btn or psych_btn or street_btn:
-    if not api_key:
-        st.error("يرجى إدخال المفتاح أولاً.")
-    elif user_query:
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            # Logic to switch personalities
-            if legal_btn:
-                instr, label, style = "أنت محامي داهية، استخرج الثغرات.", "⚖️ القانوني", "ai-style"
-            elif psych_btn:
-                instr, label, style = "أنت طبيب نفسي جنائي، حلل شخصية الخصم من لغته.", "🧠 النفسي", "psych-style"
-            else:
-                instr, label, style = "أنت مفاوض شوارع خبير، ابحث عن حلول غير تقليدية وضغوط.", "🧨 الداهية", "street-style"
+if (btn_L or btn_P or btn_S) and api_key and user_query:
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # تحويل الشخصية
+        if btn_L: role, label, style = "مستشار قانوني خبير بالثغرات والتقادم", "⚖️ القانوني", "legal-style"
+        elif btn_P: role, label, style = "محلل سلوكي وجنائي يحلل نقاط الضعف النفسية", "🧠 النفسي", "psych-style"
+        else: role, label, style = "مفاوض استراتيجي بارع يبحث عن حلول داهية", "🧨 الداهية", "street-style"
 
-            # Context extraction
-            v_txt = ""
-            if my_docs:
-                for f in my_docs:
-                    if f.type == "application/pdf":
-                        with fitz.open(stream=f.read(), filetype="pdf") as doc:
-                            for p in doc: v_txt += p.get_text() + "\n"
-            
-            o_txt = ""
-            if opp_docs:
-                for f in opp_docs:
-                    if f.type == "application/pdf":
-                        with fitz.open(stream=f.read(), filetype="pdf") as doc:
-                            for p in doc: o_txt += p.get_text() + "\n"
+        # قراءة ذكية وشاملة للملفات
+        v_context, o_context, imgs = "", "", []
 
-            # The Secret History Prompt
-            full_prompt = f"""
-            {instr}
-            استراتيجيتنا وقيمنا الملتزمين بها: {user_strategy}
-            
-            اقرأ ما بين السطور في تاريخنا (Vault): {v_txt[:10000]}
-            وقارنه بما يقوله الخصم الآن: {o_txt[:10000]}
-            
-            السؤال الحالي: {user_query}
-            
-            * ملاحظة: تعرف على الأنماط المتكررة في تاريخهم دون ذكرها صراحة إلا إذا لزم الأمر.
-            """
-            
-            response = model.generate_content(full_prompt)
-            st.session_state.chat_history.append({"role": "user", "content": user_query})
+        def process_files(files):
+            text, images = "", []
+            for f in files:
+                if f.type == "application/pdf":
+                    with fitz.open(stream=f.read(), filetype="pdf") as doc:
+                        for page in doc: text += page.get_text() + "\n"
+                else:
+                    img = Image.open(f).convert("RGB")
+                    img.thumbnail((1000, 1000))
+                    images.append(img)
+            return text, images
+
+        v_context, v_imgs = process_files(v_files if v_files else [])
+        o_context, o_imgs = process_files(o_files if o_files else [])
+
+        prompt = f"""
+        تقمص دور: {role}.
+        قيمنا الحاكمة: {strategy}.
+        
+        بيانات من 'قبو الحقائق': {v_context[:10000]}
+        بيانات من 'ملفات الخصم': {o_context[:10000]}
+        
+        الموقف المطلوب تحليله: {user_query}
+        
+        المطلوب: تحليل استراتيجي عميق، كشف التناقضات، واقتراح خطة عمل فورية.
+        """
+        
+        with st.spinner(f"جاري استدعاء {label}..."):
+            response = model.generate_content([prompt] + v_imgs + o_imgs)
+            st.session_state.chat_history.append({"role": "user", "content": user_query, "label": "👤 أنت", "style": "user-style"})
             st.session_state.chat_history.append({"role": "assistant", "content": response.text, "label": label, "style": style})
             st.rerun()
-
-        except Exception as e:
-            st.error(f"خطأ: {str(e)}")
+            
+    except Exception as e:
+        st.error(f"خطأ في الأنظمة: {e}")
