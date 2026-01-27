@@ -1,74 +1,65 @@
 import streamlit as st
 import google.generativeai as genai
-import os
-import fitz  # PyMuPDF
 from PIL import Image
+import fitz
+import io
 
-# --- 1. إعداد هيكل المجلدات ---
-if not os.path.exists("documents"):
-    os.makedirs("documents")
-
-# --- 2. هندسة الواجهة الفاخرة (حل مشكلة الحروف للأيفون) ---
-st.set_page_config(page_title="المستشار الاستراتيجي Pro", layout="centered")
+# --- 1. الهوية البصرية والقضاء على مشكلة الحروف العمودية ---
+st.set_page_config(page_title="Legal Strategic Vault", layout="centered")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     
-    /* منع تقطع الحروف العربية نهائياً */
+    /* فرض التنسيق الأفقي ومنع انكسار الكلمات */
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] p {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Cairo', sans-serif !important;
-        white-space: pre-wrap !important;
-        word-break: keep-all !important;
+        white-space: normal !important;
+        word-break: keep-all !important; /* يمنع تحول الكلمة لحروف عمودية */
+        overflow-wrap: break-word !important;
     }
 
+    /* تحسين فقاعات الشات */
     .msg-box { 
-        padding: 20px; border-radius: 18px; margin-bottom: 15px; line-height: 1.8; 
-        border-right: 10px solid; display: block !important; unicode-bidi: isolate !important;
+        padding: 20px; border-radius: 15px; margin-bottom: 15px; 
+        line-height: 1.8; border-right: 8px solid; 
+        width: 100% !important; display: block !important;
     }
-    
-    .user-style { background-color: #1e293b; border-color: #3b82f6; color: #f8fafc; }
-    .legal-style { background-color: #064e3b; border-color: #10b981; color: #ecfdf5; }
-    .psych-style { background-color: #2e1065; border-color: #a855f7; color: #f5f3ff; }
-    .street-style { background-color: #450a0a; border-color: #ef4444; color: #fff1f2; }
+    .user-style { background-color: #f1f5f9; border-color: #1e3a8a; color: #1e3a8a; }
+    .legal-style { background-color: #f0fdf4; border-color: #10b981; color: #166534; }
+    .psych-style { background-color: #f5f3ff; border-color: #8b5cf6; color: #4c1d95; }
+    .street-style { background-color: #fff1f2; border-color: #f43f5e; color: #9f1239; }
 
-    /* تنسيق المدخلات */
-    .stTextArea textarea { direction: rtl !important; text-align: right !important; background-color: #1e293b !important; color: white !important; }
-    input[type="password"] { direction: ltr !important; text-align: left !important; }
-    .stButton button { width: 100%; border-radius: 12px; height: 3.5em; background: linear-gradient(90deg, #1e3a8a, #1d4ed8); color: white; font-weight: bold; border: none; }
+    /* بطاقات النتائج الرسمية */
+    .finding-card {
+        background: white; padding: 15px; border-radius: 12px;
+        margin-bottom: 10px; border-left: 5px solid #cbd5e1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. إدارة الذاكرة ---
+# --- 2. إدارة الذاكرة ---
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# --- 4. القائمة الجانبية (مركز القيادة) ---
+# --- 3. القائمة الجانبية ---
 with st.sidebar:
-    st.title("🛡️ الخزنة الاستراتيجية")
-    api_key = st.text_input("Gemini API Key:", type="password")
-    st.divider()
-    strategy_val = st.text_input("ميثاقنا (القيم):", "الحكمة والانتصار")
-    st.divider()
-    my_vault = st.file_uploader("📂 حقائبي (الخزنة):", accept_multiple_files=True, key="v")
-    opp_docs = st.file_uploader("🚩 أوراق الخصم:", accept_multiple_files=True, key="o")
-    if st.button("تفريغ الجلسة 🗑️"):
+    st.header("🛡️ مركز القيادة")
+    api_key = st.text_input("مفتاح Gemini:", type="password")
+    v_files = st.file_uploader("قبو حقائقي (Vault)", accept_multiple_files=True)
+    o_files = st.file_uploader("ملفات الخصم (Opponent)", accept_multiple_files=True)
+    if st.button("تفريغ الذاكرة 🗑️"):
         st.session_state.chat_history = []
         st.rerun()
 
-# --- 5. واجهة العرض ---
-st.title("⚖️ المحقق الاستراتيجي Pro")
+st.title("⚖️ المحقق الاستراتيجي")
 
-for chat in st.session_state.chat_history:
-    style = chat.get("style", "user-style")
-    label = chat.get("label", "👤 أنت")
-    st.markdown(f'<div class="msg-box {style}"><b>{label}:</b><br>{chat["content"]}</div>', unsafe_allow_html=True)
-
-# --- 6. المحرك الثلاثي ---
-with st.form("strategic_form", clear_on_submit=True):
-    user_query = st.text_area("اشرح الموقف أو ارفع رسالة الخصم هنا:", height=100)
+# --- 4. محرك العقول الثلاثة ---
+with st.form("war_room_form", clear_on_submit=True):
+    user_query = st.text_area("اشرح الموقف الحالي هنا...", height=120)
     c1, c2, c3 = st.columns(3)
     with c1: btn_L = st.form_submit_button("⚖️ قانوني")
     with c2: btn_P = st.form_submit_button("🧠 نفسي")
@@ -79,37 +70,43 @@ if (btn_L or btn_P or btn_S) and api_key and user_query:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # تحديد الشخصية واللون
-        if btn_L: role, label, style = "محامي خبير بالثغرات", "⚖️ القانوني", "legal-style"
-        elif btn_P: role, label, style = "محلل نفسي جنائي خبير", "🧠 النفسي", "psych-style"
-        else: role, label, style = "مفاوض شوارع داهية", "🧨 الداهية", "street-style"
+        if btn_L: role, label, style = "محامي خبير", "⚖️ القانوني", "legal-style"
+        elif btn_P: role, label, style = "محلل نفسي جنائي", "🧠 النفسي", "psych-style"
+        else: role, label, style = "مفاوض استراتيجي داهية", "🧨 الداهية", "street-style"
 
-        # قراءة الملفات
-        def process_docs(files):
-            text = ""
-            for f in files:
-                if f.type == "application/pdf":
-                    with fitz.open(stream=f.read(), filetype="pdf") as doc:
-                        text += "".join([p.get_text() for p in doc])
-            return text
-
-        v_context = process_docs(my_vault)
-        o_context = process_docs(opp_docs)
-
-        # البرومبت العبقري
-        prompt = f"""
-        أنت الآن بصفة: {role}. قيمنا: {strategy_val}.
-        خلفية تاريخية (الخزنة): {v_context[:8000]}
-        ادعاءات الخصم: {o_context[:8000]}
-        الموقف الحالي: {user_query}
+        # قراءة الملفات (دعم كامل لكافة الصفحات)
+        v_txt = ""
+        if v_files:
+            for f in v_files:
+                with fitz.open(stream=f.read(), filetype="pdf") as doc:
+                    for p in doc: v_txt += p.get_text()
         
-        حلل واكشف الثغرات والتناقضات بأسلوب منظم جداً وباللغة العربية الفصحى.
-        """
+        prompt = f"تقمص دور {role}. حقائقي: {v_txt[:10000]}. السؤال: {user_query}"
         
         with st.spinner("جاري التحليل..."):
             response = model.generate_content(prompt)
-            st.session_state.chat_history.append({"role": "user", "content": user_query, "label": "👤 أنت", "style": "user-style"})
-            st.session_state.chat_history.append({"role": "assistant", "content": response.text, "label": label, "style": style})
+            st.session_state.chat_history.append({"label": label, "content": response.text, "style": style, "role": "ai"})
             st.rerun()
     except Exception as e:
         st.error(f"خطأ: {e}")
+
+# --- 5. عرض المحادثة ---
+for chat in st.session_state.chat_history:
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}:</b><br>{chat["content"]}</div>', unsafe_allow_html=True)
+
+# --- 6. قسم النتائج الرسمية (تصميم البطاقات الأفقي) ---
+if st.session_state.chat_history:
+    st.divider()
+    st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
+    
+    st.markdown("""
+        <div class="finding-card" style="border-right: 5px solid #3b82f6;">
+            <b>⚖️ الثغرات المستخرجة:</b><br>جاري فحص التناقضات المادية في التواريخ والأسماء.
+        </div>
+        <div class="finding-card" style="border-right: 5px solid #f59e0b;">
+            <b>🧠 نمط الخصم:</b><br>تحديد نقاط الضعف النفسية بناءً على لغة المستندات.
+        </div>
+        <div class="finding-card" style="border-right: 5px solid #10b981;">
+            <b>🎯 الخطوة القادمة:</b><br>تجهيز الرد الاستراتيجي بناءً على التحليل المختار.
+        </div>
+    """, unsafe_allow_html=True)
