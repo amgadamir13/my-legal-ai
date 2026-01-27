@@ -2,4 +2,3 @@ google-generativeai
 streamlit
 pymupdf
 Pillow
-pandas
