@@ -4,162 +4,123 @@ import google.generativeai as genai
 import fitz  # PyMuPDF
 import io
 import os
-import time
 import re
 from datetime import datetime
 
 # =============================================
-# 1. PAGE CONFIGURATION & ENHANCED STYLING
+# 1. PAGE CONFIG & RADICAL ARABIC FIX
 # =============================================
-st.set_page_config(
-    page_title="Strategic War Room Pro",
-    page_icon="⚖️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Strategic War Room Pro", layout="wide")
 
-# التنسيق الشامل لحل مشكلة الحروف العربية (بناءً على طلبك لمنع التقطع)
+# التنسيق الذي يقتل مشكلة النص الرأسي نهائياً
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
     
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] p {
+    /* منع انكماش الحاوية الرئيسية */
+    .main .block-container {
+        max-width: 95% !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+
+    /* إصلاح الفقاعات ومنع انكسار الكلمات */
+    [data-testid="stMarkdownContainer"] p, .msg-box {
         direction: rtl !important;
         text-align: right !important;
         font-family: 'Cairo', sans-serif !important;
-        white-space: pre-wrap !important;
-        word-break: keep-all !important; /* السر في بقاء الحروف متصلة */
+        white-space: normal !important; /* السماح بالتفاف السطور لا الحروف */
+        word-break: keep-all !important; /* منع كسر الكلمة الواحدة */
+        overflow-wrap: break-word !important;
+        line-height: 1.8 !important;
+        display: block !important;
+        min-width: 250px !important; /* ضمان مساحة عرض دنيا */
     }
     
     .msg-box { 
-        padding: 25px; border-radius: 18px; margin-bottom: 25px; line-height: 1.8; 
-        border-right: 12px solid; box-shadow: 0 6px 20px rgba(0,0,0,0.1); 
-        width: 100% !important; display: block !important;
+        padding: 20px; border-radius: 15px; margin-bottom: 20px; 
+        border-right: 10px solid; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
-    .user-style { border-color: #1e3a8a; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); color: #1e3a8a; }
-    .legal { border-color: #3b82f6; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); }
-    .psych { border-color: #8b5cf6; background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); }
-    .strat { border-color: #f59e0b; background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); }
-    
-    .stButton > button { width: 100%; border-radius: 12px; font-weight: 700; background: #1e3a8a; color: white; height: 3.5em; }
+    .user-style { border-color: #1e3a8a; background-color: #f8fafc; color: #1e3a8a; }
+    .legal { border-color: #3b82f6; background-color: #eff6ff; }
+    .psych { border-color: #8b5cf6; background-color: #f5f3ff; }
+    .strat { border-color: #f59e0b; background-color: #fffbeb; }
+
+    /* تحسين المدخلات للأيفون */
+    .stTextArea textarea { direction: rtl !important; text-align: right !important; font-size: 16px !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # =============================================
-# 2. ENHANCED FUNCTIONS (FROM YOUR CODE)
+# 2. CORE FUNCTIONS
 # =============================================
-
-@st.cache_data(show_spinner=False)
-def normalize_arabic_text(text: str) -> str:
+def normalize_arabic_text(text):
     if not text: return ""
     text = re.sub(r'[\u200b-\u200f\u202a-\u202e]', '', text)
-    replacements = {'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ة': 'ه'}
-    for old, new in replacements.items(): text = text.replace(old, new)
-    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\s+', ' ', text) # دمج المسافات الزائدة التي تسبب تقطعاً
     return text.strip()
-
-def validate_pdf_file(file):
-    if file.type != "application/pdf": return False, "الملف ليس بصيغة PDF"
-    if file.size > 10 * 1024 * 1024: return False, "حجم الملف كبير جداً (الحد الأقصى 10MB)"
-    return True, ""
 
 def extract_text_from_pdf(file_bytes):
     try:
         text = ""
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-            for page in doc: text += page.get_text() + "\n"
+            for page in doc: text += page.get_text() + " "
         return normalize_arabic_text(text)
     except Exception as e: return f"خطأ: {e}"
 
 # =============================================
-# 3. PROMPT TEMPLATES (YOUR CONDENSED BRAIN)
-# =============================================
-PROMPT_TEMPLATES = {
-    "legal": "أنت خبير قانوني محترف. حلل الموقف التالي:\nحقائقنا: {v}\nادعاءات الخصم: {o}\nالسؤال: {q}\nالمطلوب: تقييم قانوني دقيق وتوصيات عملية.",
-    "psychological": "أنت خبير في علم النفس القانوني. حلل الموقف:\nحقائقنا: {v}\nادعاءات الخصم: {o}\nالسؤال: {q}\nالمطلوب: كشف الدوافع ونقاط الضغط النفسي.",
-    "strategic": "أنت استراتيجي داهية. طور خطة تكتيكية:\nحقائقنا: {v}\nادعاءات الخصم: {o}\nالهدف: {q}\nالمطلوب: خطوات غير متوقعة وسيناريوهات طوارئ."
-}
-
-# =============================================
-# 4. SESSION STATE & SIDEBAR
+# 3. INTERFACE & LOGIC
 # =============================================
 if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "analysis_count" not in st.session_state: st.session_state.analysis_count = 0
 
 with st.sidebar:
-    st.header("🛡️ مركز العمليات")
-    api_key = st.text_input("مفتاح API:", type="password")
-    model_name = st.selectbox("الموديل:", ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"])
-    
-    st.divider()
+    st.header("🛡️ الإعدادات")
+    api_key = st.text_input("Gemini API Key:", type="password")
+    model_choice = st.selectbox("الموديل:", ["gemini-1.5-flash", "gemini-1.5-pro"])
     v_files = st.file_uploader("📂 الخزنة", type=["pdf"], accept_multiple_files=True)
     o_files = st.file_uploader("⚔️ الخصم", type=["pdf"], accept_multiple_files=True)
-    
-    if st.button("🗑️ تفريغ الذاكرة"):
+    if st.button("🗑️ مسح"): 
         st.session_state.chat_history = []
         st.rerun()
 
-# =============================================
-# 5. MAIN INTERFACE
-# =============================================
 st.title("⚖️ Strategic War Room Pro")
 
-# عرض السجل التاريخي
+# عرض الرسائل
 for chat in st.session_state.chat_history:
-    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>: {chat["content"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-# استمارة التحليل
+# نموذج الإدخال
 with st.form("main_form", clear_on_submit=True):
-    user_query = st.text_area("اشرح الموقف بالتفصيل:")
+    u_query = st.text_area("اشرح الموقف:")
     c1, c2, c3 = st.columns(3)
     with c1: btn_L = st.form_submit_button("⚖️ قانوني")
     with c2: btn_P = st.form_submit_button("🧠 نفسي")
-    with c3: btn_S = st.form_submit_button("🧨 استراتيجي")
+    with c3: btn_S = st.form_submit_button("🧨 داهية")
 
-# =============================================
-# 6. EXECUTION LOGIC
-# =============================================
-if (btn_L or btn_P or btn_S) and api_key and user_query:
+if (btn_L or btn_P or btn_S) and api_key and u_query:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(model_choice)
         
-        # معالجة الملفات
-        v_txt = ""
-        if v_files:
-            for f in v_files:
-                valid, msg = validate_pdf_file(f)
-                if valid: v_txt += extract_text_from_pdf(f.read())
-        
-        o_txt = ""
-        if o_files:
-            for f in o_files:
-                valid, msg = validate_pdf_file(f)
-                if valid: o_txt += extract_text_from_pdf(f.read())
+        v_txt = "".join([extract_text_from_pdf(f.read()) for f in v_files]) if v_files else ""
+        o_txt = "".join([extract_text_from_pdf(f.read()) for f in o_files]) if o_files else ""
 
-        # اختيار القالب
-        a_type = "legal" if btn_L else "psychological" if btn_P else "strategic"
-        label = "⚖️ القانوني" if btn_L else "🧠 النفسي" if btn_P else "🧨 الداهية"
-        style = "legal" if btn_L else "psych" if btn_P else "strat"
+        label, style, role = ("⚖️ القانوني", "legal", "محامي") if btn_L else \
+                             ("🧠 النفسي", "psych", "خبير نفسي") if btn_P else \
+                             ("🧨 الداهية", "strat", "استراتيجي")
         
-        prompt = PROMPT_TEMPLATES[a_type].format(v=v_txt[:4000], o=o_txt[:4000], q=user_query)
-
-        with st.spinner("جاري التحليل المعمق..."):
-            response = model.generate_content(prompt)
-            st.session_state.chat_history.append({"label": label, "content": response.text, "style": style})
-            st.session_state.analysis_count += 1
+        prompt = f"أنت {role}. حلل: {u_query}. سياقنا: {v_txt[:4000]}. سياق الخصم: {o_txt[:4000]}. أجب بالعربية الفصحى وبشكل عرضي منظم."
+        
+        with st.spinner("جاري التحليل..."):
+            res = model.generate_content(prompt)
+            st.session_state.chat_history.append({"label": label, "content": res.text, "style": style})
             st.rerun()
-            
-    except Exception as e:
-        st.error(f"Error: {e}")
+    except Exception as e: st.error(f"Error: {e}")
 
-# =============================================
-# 7. OFFICIAL FINDINGS
-# =============================================
+# قسم النتائج النهائية
 if st.session_state.chat_history:
     st.divider()
-    st.subheader("📋 التقرير الاستراتيجي (#Official-Findings)")
-    st.download_button("📥 تحميل التقرير النهائي", 
-                       "\n".join([f"{c['label']}: {c['content']}" for c in st.session_state.chat_history]),
-                       file_name="strategic_report.txt")
+    st.subheader("📋 التقرير النهائي (#Official-Findings)")
+    report = "\n".join([f"{c['label']}: {c['content']}" for c in st.session_state.chat_history])
+    st.download_button("📥 تحميل التقرير", report, file_name="report.txt")
