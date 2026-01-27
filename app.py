@@ -1,196 +1,109 @@
-import streamlit as st
-import google.generativeai as genai
-import fitz  # PyMuPDF
-import io
-import traceback
-import re
-from typing import List
-
 # --------------------
-# إعداد الصفحة وCSS
+# استدعاء Gemini (تكملة الدالة الأساسية)
 # --------------------
-st.set_page_config(page_title="Strategic War Room Pro", layout="wide")
-
-st.markdown(
+def call_gemini(prompt: str, model_name: str, api_key: str):
     """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stMarkdownContainer"] {
-        direction: rtl !important;
-        text-align: right !important;
-        font-family: 'Cairo', sans-serif !important;
-    }
-
-    /* اجعل التفاف الكلمات والسلوك الافتراضي آمناً للغات المتصلة (العربية) */
-    .stMarkdown p, .stMarkdown div {
-        display: block !important;
-        white-space: pre-wrap !important;
-        word-break: normal !important;
-        overflow-wrap: break-word !important;
-        min-width: 320px !important;
-    }
-
-    .msg-box {
-        padding: 20px;
-        border-radius: 15px;
-        margin-bottom: 20px;
-        line-height: 1.8;
-        border-right: 12px solid;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        width: 100% !important;
-        background-color: #ffffff;
-        display: block !important;
-    }
-
-    .user-style { border-color: #1e3a8a; background-color: #f8fafc; color: #1e3a8a; }
-    .ai-style { border-color: #10b981; background-color: #f0fdf4; color: #14532d; }
-
-    .finding-card {
-        background: #ffffff; padding: 25px; border-radius: 15px;
-        margin-bottom: 20px; border-right: 8px solid #cbd5e1;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        display: block !important;
-        width: 100% !important;
-        word-break: normal !important;
-    }
-
-    input[type="password"] { direction: ltr !important; text-align: left !important; }
-    .stButton button { width: 100%; border-radius: 12px; height: 3.5em; font-weight: bold; background-color: #1e3a8a; color: white; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# --------------------
-# حالة الجلسة
-# --------------------
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "raw_last_response" not in st.session_state:
-    st.session_state.raw_last_response = None
-
-# --------------------
-# الشريط الجانبي (الـ Vault)
-# --------------------
-with st.sidebar:
-    st.title("🛡️ المحقق الاستراتيجي")
-    api_key = st.text_input(
-        "مفتاح Gemini السري:",
-        type="password",
-        placeholder="أدخل API Key الخاص بـ Gemini هنا",
-    )
-    st.markdown("`model:` قابل للتغيير أدناه (إن لم تكن متأكداً غيّر الاسم بعد تجربة list_models)")
-    model_name = st.text_input("اسم النموذج (Model name):", value="gemini-1.5-flash")
-    st.divider()
-    v_files = st.file_uploader("قبو الحقائق (Vault):", accept_multiple_files=True)
-    o_files = st.file_uploader("ملفات الخصم (Opponent):", accept_multiple_files=True)
-    show_raw = st.checkbox("عرض الاستجابة الخام (debug)", value=False)
-    if st.button("تفريغ الذاكرة 🗑️"):
-        st.session_state.chat_history = []
-        st.session_state.raw_last_response = None
-        st.rerun()
-
-st.title("⚖️ Strategic War Room Pro")
-
-# --------------------
-# مساعدة: تنظيف/تطبيع نص عربي مستخرج من PDF
-# --------------------
-def normalize_arabic_text(text: str) -> str:
-    """
-    يقوم بما يلي لتقليل مشكلة الحروف المتقطعة/المكدسة:
-      - يزيل zero-width non-joiner/joiner (U+200C, U+200D)
-      - يزيل المسافات أو الأسطر بين الحروف العربية (يعيد ربطها)
-      - يقلص الفراغات المتكررة ويحافظ على فواصل الفقرات المعقولة
-    """
-    if not text:
-        return ""
-    # إزالة zero-width joiner/non-joiner
-    text = text.replace("\u200c", "").replace("\u200d", "")
-    # امسح الأسطر أو الفراغات بين الحروف العربية حتى لا تظهر منفصلة
-    text = re.sub(r'(?<=[\u0600-\u06FF])\s*\n\s*(?=[\u0600-\u06FF])', '', text)
-    text = re.sub(r'(?<=[\u0600-\u06FF])\s+(?=[\u0600-\u06FF])', '', text)
-    # تقليص فراغات غير ضرورية (حافظ على فقرتين كحد أقصى)
-    text = re.sub(r'\r\n', '\n', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    text = re.sub(r'[ \t\f\v]{2,}', ' ', text)
-    return text.strip()
-
-# --------------------
-# مساعدة: استخراج نص من ملفات PDF (PyMuPDF)
-# --------------------
-def get_text_from_files(files: List[st.runtime.uploaded_file_manager.UploadedFile]) -> str:
-    text = ""
-    if not files:
-        return ""
-    for f in files:
-        try:
-            raw = f.read()
-            if not raw:
-                continue
-            # افصل المحاولة لأن fitz قد يرفع استثناء لملفات غير pdf
-            with fitz.open(stream=raw, filetype="pdf") as doc:
-                for page in doc:
-                    page_text = page.get_text()
-                    if page_text:
-                        text += page_text + "\n"
-        except Exception as ex:
-            # تخطي الملفات غير الصحيحة، تابع باقي الملفات
-            # عرض الاستثناء أثناء التصحيح حتى نعرف سبب الفشل
-            try:
-                if show_raw:
-                    st.error(f"خطأ عند قراءة الملف: {getattr(f, 'name', 'uploaded_file')}")
-                    st.exception(ex)
-            except Exception:
-                pass
-            continue
-    # طابق/نظف نصوص اللغة العربية المحتملة قبل الإرجاع
-    return normalize_arabic_text(text)
-
-# --------------------
-# مساعدة: استخراج النص من شكل الاستجابة المتغير لـ Gemini
-# --------------------
-def extract_text_from_response(resp) -> str:
-    """
-    يحاول استخراج نص الإنسان القابل للقراءة من الأشكال المختلفة للاستجابة.
-    يدعم: كائنات مع candidates/candidates[0].content، output، text، dict-like responses.
+    محرك الاتصال الذكي: يحاول استدعاء النموذج بأكثر من واجهة برمجية 
+    لضمان التوافق مع تحديثات مكتبة google-generativeai.
     """
     try:
-        if resp is None:
-            return ""
-        if hasattr(resp, "candidates") and resp.candidates:
-            cand = resp.candidates[0]
-            if hasattr(cand, "content") and cand.content:
-                return cand.content
-            if hasattr(cand, "text") and cand.text:
-                return cand.text
-            return str(cand)
-        if hasattr(resp, "output_text") and resp.output_text:
-            return resp.output_text
-        if hasattr(resp, "output") and resp.output:
-            out = resp.output
-            if isinstance(out, str):
-                return out
-            try:
-                return str(out)
-            except Exception:
-                pass
-        if hasattr(resp, "text") and resp.text:
-            return resp.text
-        if isinstance(resp, dict):
-            cands = resp.get("candidates")
-            if cands and isinstance(cands, list) and len(cands) > 0:
-                first = cands[0]
-                if isinstance(first, dict):
-                    return first.get("content") or first.get("text") or str(first)
-                return str(first)
-            return resp.get("output") or resp.get("output_text") or resp.get("text") or str(resp)
-        return str(resp)
-    except Exception:
-        return f"<unable to extract text: {traceback.format_exc()}>"
+        genai.configure(api_key=api_key)
+        
+        # محاولة الوصول للنموذج
+        model = genai.GenerativeModel(model_name)
+        
+        # استدعاء الإنشاء مع معالجة الأخطاء الشائعة في الـ Safety Settings
+        response = model.generate_content(prompt)
+        
+        # استخراج النص بطريقة آمنة
+        answer = extract_text_from_response(response)
+        
+        if not answer or answer.strip() == "":
+             raise ValueError("استجابة النموذج فارغة أو تم حظرها.")
+             
+        return response, answer
+
+    except Exception as e:
+        error_msg = f"فشل استدعاء Gemini: {str(e)}"
+        if "API_KEY_INVALID" in str(e):
+            error_msg = "مفتاح API غير صحيح. يرجى التأكد منه في الشريط الجانبي."
+        raise RuntimeError(error_msg)
 
 # --------------------
-# استدعاء Gemini بأكثر من مدخل محتمل (متوافق مع إصدارات مختلفة من المكتبة)
-# نسخة محسّنة تُحاول أيضًا استرداد قائمة النماذج لاقتراح أسماء صالحة
+# المحرك الاستراتيجي (الواجهة الأمامية)
 # --------------------
-def call_gemini(prompt: str, model_name: str = "gemini-
+with st.form("war_room_form", clear_on_submit=True):
+    user_query = st.text_area("اشرح الموقف الحالي أو اطلب تحليل التناقضات:", height=120)
+    c1, c2, c3 = st.columns(3)
+    with c1: btn_L = st.form_submit_button("⚖️ قانوني")
+    with c2: btn_P = st.form_submit_button("🧠 نفسي")
+    with c3: btn_S = st.form_submit_button("🧨 داهية")
+
+if (btn_L or btn_P or btn_S) and api_key and user_query:
+    try:
+        # تحديد الشخصية
+        if btn_L: label, role, style = "⚖️ القانوني", "محامٍ جنائي متخصص في الثغرات", "legal-style"
+        elif btn_P: label, role, style = "🧠 النفسي", "محلل سلوكي يحلل لغة الجسد والنصوص", "psych-style"
+        else: label, role, style = "🧨 الداهية", "مفاوض استراتيجي يجد حلولاً خارج الصندوق", "street-style"
+
+        # قراءة المستندات
+        with st.spinner("جاري قراءة الملفات وتحليل البيانات..."):
+            v_text = get_text_from_files(v_files)
+            o_text = get_text_from_files(o_files)
+
+        # بناء البرومبت الاحترافي
+        full_prompt = f"""
+        تقمص دور: {role}.
+        سياق الحقائق (Vault): {v_text[:10000]}
+        ادعاءات الخصم (Opponent): {o_text[:10000]}
+        سؤال المستخدم: {user_query}
+        
+        المطلوب:
+        1. تحليل دقيق جداً للموقف.
+        2. كشف التناقضات بين الحقائق وادعاءات الخصم (إن وجدت).
+        3. اقتراح خطة عمل استراتيجية فورية.
+        أجب بالعربية الفصحى وبشكل نقاط واضحة.
+        """
+
+        with st.spinner(f"جاري معالجة الرد بواسطة {label}..."):
+            raw_resp, answer_text = call_gemini(full_prompt, model_name, api_key)
+            st.session_state.raw_last_response = raw_resp
+            
+            # إضافة للمحادثة
+            st.session_state.chat_history.append({"role": "user", "content": user_query, "label": "👤 أنت", "style": "user-style"})
+            st.session_state.chat_history.append({"role": "ai", "content": answer_text, "label": label, "style": style})
+            st.rerun()
+
+    except Exception as e:
+        st.error(f"⚠️ خطأ استراتيجي: {str(e)}")
+        if show_raw:
+            st.code(traceback.format_exc())
+
+# --------------------
+# عرض التاريخ (Chat Display)
+# --------------------
+for chat in st.session_state.chat_history:
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}:</b><br>{chat["content"]}</div>', unsafe_allow_html=True)
+
+# --------------------
+# قسم النتائج الرسمية (Findings)
+# --------------------
+if st.session_state.chat_history:
+    st.divider()
+    st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
+    
+    # عرض Debug إذا تم تفعيله
+    if show_raw and st.session_state.raw_last_response:
+        with st.expander("🔍 تفاصيل الاستجابة الخام (Debug)"):
+            st.write(st.session_state.raw_last_response)
+
+    st.markdown("""
+        <div class="finding-card">
+            <b style="color: #1e3a8a;">⚖️ الخلاصة القانونية:</b><br>
+            يتم استخراج الثغرات بناءً على التناقضات المكتشفة في ملفات الخصم مقارنة بالحقائق الموثقة.
+        </div>
+        <div class="finding-card">
+            <b style="color: #10b981;">🎯 التوصية الفورية:</b><br>
+            اتبع استراتيجية "الهجوم المضاد بالوثائق" المذكورة في رد المستشار أعلاه.
+        </div>
+    """, unsafe_allow_html=True)
