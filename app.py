@@ -1,77 +1,124 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image
-import fitz  # PyMuPDF
+import fitz
+import io
 
-# 1. تنسيق الواجهة (أنيق وسهل للعين)
-st.set_page_config(page_title="المستشار القانوني الذكي", layout="centered")
+# --- 1. تصميم الهوية البصرية (High-End Professional) ---
+st.set_page_config(page_title="المستشار القانوني Pro", layout="centered")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    * { direction: rtl; text-align: right; font-family: 'Cairo', sans-serif; }
-    .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #1e3a8a; color: white; font-weight: bold; }
-    .result-card { background-color: #ffffff; padding: 25px; border-radius: 15px; border-right: 10px solid #1e3a8a; box-shadow: 0 4px 12px rgba(0,0,0,0.1); color: #1a1a1a; line-height: 1.8; }
+    html, body, [data-testid="stAppViewContainer"] {
+        direction: rtl !important; text-align: right !important;
+        font-family: 'Cairo', sans-serif !important;
+        background-color: #f8f9fa;
+    }
+    .msg-box { padding: 22px; border-radius: 20px; margin-bottom: 15px; line-height: 1.8; border: 1px solid #e2e8f0; }
+    .user-style { background-color: #ffffff; border-right: 8px solid #1e3a8a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
+    .ai-style { background-color: #f0fdf4; border-right: 8px solid #10b981; }
+    .detect-style { background-color: #fff1f2; border-right: 8px solid #e11d48; color: #9f1239; font-weight: 500; }
+    input[type="password"] { direction: ltr !important; text-align: left !important; }
+    .stButton button { border-radius: 12px; height: 3.8em; background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); color: white; font-weight: bold; width: 100%; border: none; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- الواجهة الرئيسية ---
-st.title("⚖️ المستشار القانوني المصري")
-st.write("أهلاً بك؛ أنا مستشارك الذكي. سأدمج خبرتي في القانون المصري مع الملفات التي ستزودني بها الآن.")
+# --- 2. إدارة ذاكرة الجلسة ---
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# 2. منطقة الدخول (API Key) - مع ميزة الحفظ
-with st.expander("🔑 إعدادات الوصول (اضغط هنا لإدخال المفتاح)", expanded=True):
-    api_key = st.text_input("أدخل مفتاح Gemini:", type="password", autocomplete="current-password")
-    if api_key:
-        st.success("✅ تم التعرف على المفتاح")
+# --- 3. القائمة الجانبية (The Secure Vault) ---
+with st.sidebar:
+    st.title("🛡️ المحقق الاستراتيجي")
+    api_key = st.text_input("مفتاح Gemini السري:", type="password", placeholder="AIza...")
+    st.divider()
+    
+    st.subheader("📁 قبو حقائقك (Vault)")
+    my_docs = st.file_uploader("ارفع أدلتك الموثوقة:", accept_multiple_files=True, key="vault")
+    
+    st.subheader("🚩 مستندات الخصم (Opponent)")
+    opp_docs = st.file_uploader("ارفع أوراق الخصم لكشف التناقض:", accept_multiple_files=True, key="opponent")
+    
+    if st.button("تفريغ الذاكرة والملفات 🗑️"):
+        st.session_state.chat_history = []
+        st.rerun()
 
-# 3. رفع الملفات (الحل لمشكلة "المجلد المفقود")
-uploaded_files = st.file_uploader("ارفع مستنداتك القانونية (PDF أو صور) هنا:", accept_multiple_files=True)
+# --- 4. عرض المحادثة الذكي ---
+st.title("⚖️ المحقق القانوني Pro")
+st.caption("نظام كشف التناقضات ومطابقة الأدلة الجنائية")
 
-# 4. السؤال القانوني
-query = st.text_area("اشرح مشكلتك القانونية أو اسأل عن تفاصيل في المستندات:", height=150)
+for chat in st.session_state.chat_history:
+    # تمييز التناقضات باللون الأحمر فوراً
+    content = chat["content"]
+    is_alert = any(x in content for x in ["تناقض", "كذب", "مخالفة", "ثغرة", "غير مطابق"])
+    style = "user-style" if chat["role"] == "user" else ("detect-style" if is_alert else "ai-style")
+    
+    label = "👤 أنت" if chat["role"] == "user" else "⚖️ المستشار"
+    st.markdown(f'<div class="msg-box {style}"><b>{label}:</b><br>{content}</div>', unsafe_allow_html=True)
 
-if st.button("تحليل استراتيجي شامل 🚀"):
+# --- 5. محرك الاستجواب المقابل (Forensic Engine) ---
+with st.form("pro_form", clear_on_submit=True):
+    user_query = st.text_area("اشرح الموقف أو اطلب كشف التناقضات بين الملفات:", height=120)
+    analyze_btn = st.form_submit_button("إجراء التحليل الاستراتيجي 🔍")
+
+if analyze_btn:
     if not api_key:
-        st.error("من فضلك أدخل مفتاح الـ API أولاً في خانة الإعدادات.")
-    elif not query:
-        st.warning("من فضلك اكتب سؤالك أو اشرح الموقف.")
-    else:
+        st.error("⚠️ يرجى إدخال المفتاح في القائمة الجانبية.")
+    elif user_query:
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+        
         try:
             genai.configure(api_key=api_key)
+            # اختيار أسرع وأحدث النماذج تلقائياً
+            available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            target = next((m for m in ['models/gemini-2.0-flash', 'models/gemini-1.5-pro'] if m in available), 'models/gemini-1.5-flash')
             
-            # اختيار الموديل تلقائياً
-            m_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            target = next((m for m in m_list if '1.5-pro' in m), m_list[0])
             model = genai.GenerativeModel(target)
             
-            context = ""
-            images_to_send = []
+            vault_txt, opp_txt, images = "", "", []
 
-            # معالجة الملفات المرفوعة "فوراً"
-            if uploaded_files:
-                for uploaded_file in uploaded_files:
-                    if uploaded_file.type == "application/pdf":
-                        doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-                        for page in doc:
-                            context += page.get_text()
+            # معالجة قبو الحقائق (Vault)
+            if my_docs:
+                for f in my_docs:
+                    if f.type == "application/pdf":
+                        with fitz.open(stream=f.read(), filetype="pdf") as doc:
+                            for p in doc: vault_txt += p.get_text() + "\n"
                     else:
-                        img = Image.open(uploaded_file)
-                        images_to_send.append(img)
+                        img = Image.open(f).convert("RGB")
+                        img.thumbnail((1200, 1200)) # دقة عالية للـ OCR
+                        images.append(img)
+
+            # معالجة مستندات الخصم (Opponent)
+            if opp_docs:
+                for f in opp_docs:
+                    if f.type == "application/pdf":
+                        with fitz.open(stream=f.read(), filetype="pdf") as doc:
+                            for p in doc: opp_txt += p.get_text() + "\n"
+
+            # برومبت "المدعي العام" الصارم
+            prosecutor_prompt = f"""
+            بصفتك 'مدعي عام خبير'، حلل التناقضات بين الحقائق والادعاءات.
             
-            # صياغة الاستراتيجية (عقلية المحامي المصري)
-            prompt = f"""
-            بصفتك مستشاراً قانونياً مصرياً داهية وخبيراً بالتاريخ القانوني:
-            1. حلل الموقف بناءً على القانون المصري.
-            2. استخدم المعلومات المرفقة من الملفات: {context[:5000]} 
-            3. اقترح حلولاً ذكية أو ثغرات أو مسارات بديلة لتفادي المشاكل.
-            سؤال المستخدم: {query}
+            حقائقنا (Vault):
+            {vault_txt[:15000]}
+            
+            ادعاءات الخصم (Opponent):
+            {opp_txt[:15000]}
+            
+            المهمة:
+            1. قارن بدقة: هل ما قاله الخصم يطابق مستنداتنا؟ ابحث عن تلاعب في التواريخ أو الأرقام.
+            2. صحح المصطلحات المشوهة في الصور (مثال: 'احواف' تعني 'أطراف').
+            3. حدد ثغرات قانونية يمكن استخدامها ضده.
+            4. الرد بالعربية القانونية الفصحى وبشكل نقاط.
+            
+            سؤال المستخدم: {user_query}
             """
             
-            with st.spinner("المستشار يقوم الآن بمراجعة القوانين وتحليل الأوراق..."):
-                response = model.generate_content([prompt] + images_to_send)
-                st.markdown("### 📜 التقرير القانوني والاستراتيجية المقترحة:")
-                st.markdown(f'<div class="result-card">{response.text}</div>', unsafe_allow_html=True)
-                
+            with st.spinner("جاري مطابقة الأدلة وكشف الثغرات..."):
+                response = model.generate_content([prosecutor_prompt] + images if images else [prosecutor_prompt])
+                st.session_state.chat_history.append({"role": "assistant", "content": response.text})
+                st.rerun()
+
         except Exception as e:
-            st.error(f"حدث خطأ أثناء التحليل: {str(e)}")
+            st.error(f"تنبيه تقني: {str(e)}")
