@@ -43,28 +43,30 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 # =============================================
-# 3. MAIN APP INTERFACE (No sidebar dependency)
+# 3. MAIN APP INTERFACE
 # =============================================
 st.title("⚖️ Strategic War Room Pro")
 
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not api_key:
-    st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Replit باسم GEMINI_API_KEY.")
+    st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Streamlit باسم GEMINI_API_KEY.")
 
+# ✅ قائمة الموديلات الصحيحة
 model_choice = st.selectbox("اختر الموديل:", [
     "gemini-2.0-flash",
-    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro-latest",
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
     st.session_state.chat_history = []
     st.rerun()
 
-# Display previous chat
+# عرض المحادثات السابقة
 for chat in st.session_state.chat_history:
     st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-# Input Form
+# إدخال النص
 with st.form("strategic_form"):
     query = st.text_area("اشرح الموقف الاستراتيجي:", height=150)
     btn_L = st.form_submit_button("⚖️ قانوني")
