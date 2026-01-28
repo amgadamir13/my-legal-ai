@@ -5,9 +5,9 @@ import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE SETUP & STYLING (Mobile-friendly)
+# 1. PAGE SETUP & STYLING
 # =============================================
-st.set_page_config(page_title="Strategic War Room Pro 2026", layout="centered")
+st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
 
 st.markdown("""
     <style>
@@ -53,9 +53,10 @@ if not api_key:
 
 # ✅ قائمة الموديلات الصحيحة
 model_choice = st.selectbox("اختر الموديل:", [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro-latest",
+    "gemini-3-flash",
+    "gemini-3-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
