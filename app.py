@@ -73,7 +73,6 @@ if "last_request_time" not in st.session_state: st.session_state.last_request_ti
 # =============================================
 with st.sidebar:
     st.header("🛡️ الإعدادات")
-    api_key = st.text_input("🔑 مفتاح Gemini API:", type="password")
     model_choice = st.selectbox("اختر النموذج:", ["gemini-3-flash","gemini-3-pro"])
     files = st.file_uploader("📂 رفع ملفات PDF", type=["pdf"], accept_multiple_files=True)
 
@@ -101,9 +100,8 @@ def run_analysis(query, docs_text):
         return
     st.session_state.last_request_time = current_time
 
-    if not api_key or len(api_key.strip()) < 20:
-        st.error("⚠️ مفتاح API غير صالح")
-        return
+    # ✅ API key from secrets
+    api_key = st.secrets["general"]["GEMINI_API_KEY"]
 
     try:
         genai.configure(api_key=api_key)
