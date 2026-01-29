@@ -48,10 +48,10 @@ api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not api_key:
     st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Streamlit باسم GEMINI_API_KEY.")
 
-# ✅ Use only supported models
+# ✅ Correct model names for v1
 model_choice = st.selectbox("اختر الموديل:", [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-3.0-flash",
+    "gemini-3.0-pro",
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
