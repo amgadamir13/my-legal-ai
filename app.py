@@ -17,7 +17,15 @@ html, body, [data-testid="stAppViewContainer"] {
     direction: rtl !important;
     text-align: right !important;
     font-family: 'Cairo', sans-serif !important;
+    unicode-bidi: bidi-override !important;
+    writing-mode: horizontal-tb !important;
 }
+* {
+    word-break: normal !important;
+    white-space: normal !important;
+    line-height: 1.8 !important;
+}
+
 .msg-box { padding: 15px; border-radius: 10px; margin-bottom: 10px; border-right: 6px solid; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 .user-style { border-color: #1e3a8a; background: #f1f5f9; color: #1e3a8a; }
 .legal { border-color: #3b82f6; background: #eff6ff; color: #1e40af; }
