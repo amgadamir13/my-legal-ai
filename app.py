@@ -1,9 +1,14 @@
+Copilot code lawyer
+
 # -*- coding: utf-8 -*-
 import streamlit as st
 import google.generativeai as genai
 import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
+# =============================================
+# 1. PAGE SETUP & STYLING
+# =============================================
 st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
 
 st.markdown("""
@@ -29,28 +34,37 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# =============================================
+# 2. SESSION STATE
+# =============================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# =============================================
+# 3. MAIN APP INTERFACE
+# =============================================
 st.title("⚖️ Strategic War Room Pro")
 
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not api_key:
     st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Streamlit باسم GEMINI_API_KEY.")
 
-# ✅ Safe for v1beta
 model_choice = st.selectbox("اختر الموديل:", [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-3-flash",
+    "gemini-3-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
     st.session_state.chat_history = []
     st.rerun()
 
+# عرض المحادثات السابقة
 for chat in st.session_state.chat_history:
     st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
+# إدخال النص
 query = st.text_area("اشرح الموقف الاستراتيجي:", height=120)
 
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -60,35 +74,28 @@ btn_S = col3.button("🧨 استراتيجي")
 btn_C = col4.button("🔀 تحليل شامل")
 btn_B = col5.button("💡 إبداعي")
 
-def run_analysis(role, label, style, query, full_audit=False):
+# =============================================
+# 4. PROCESSING LOGIC
+# =============================================
+def run_analysis(role, label, style, query):
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name=model_choice)
+        model = genai.GenerativeModel(model_choice)
 
-        if full_audit:
-            prompt = f"""
-أنت فريق متعدد التخصصات في غرفة الحرب القانونية.
-الموقف: {query}
-
-أنتج تقريراً منظماً يتضمن:
-1. ملخص تنفيذي.
-2. رأي المحامي الذكي (Street Smart Lawyer).
-3. رأي محامي الخصم (Defense Counsel).
-4. رأي خبير قانون الإيجار المصري.
-5. رأي المحلل النفسي.
-6. رأي الشرطي.
-7. رأي المجرم السابق.
-8. مراجعة المدقق (Audit Review).
-9. توصيات نهائية عملية.
-            """
-        else:
-            prompt = f"""
+        # Prompt with clarification rule
+        prompt = f"""
 أنت {role}.
 الموقف: {query}.
-ابدأ بـ الملخص التنفيذي.
-ثم قسم الرد إلى: الوقائع، القضايا المطروحة، التحليل، الاستنتاج.
-أضف نصائح عملية وذكية إذا كان الدور قانوني.
-            """
+إذا لم تكن المعلومات مؤكدة بنسبة 100%، اطلب توضيح من المستخدم بدلاً من الافتراض.
+أجب بالعربية بأسلوب منظم.
+ابدأ بـ **الملخص التنفيذي**.
+ثم قسم الرد إلى:
+- الوقائع
+- القضايا المطروحة
+- التحليل
+- الاستنتاج
+أضف نصائح عملية وذكية (street-smart) إذا كان الدور قانوني.
+        """
 
         with st.spinner("⚔️ جاري التحليل..."):
             res = model.generate_content(prompt)
@@ -115,10 +122,13 @@ if query and api_key:
     elif btn_S:
         run_analysis("مخطط استراتيجي داهية", "🧨 الاستراتيجي", "strat", query)
     elif btn_C:
-        run_analysis("فريق غرفة الحرب متعدد التخصصات", "🔀 التحليل الشامل", "combo", query, full_audit=True)
+        run_analysis("خبير يجمع بين القانون وعلم النفس والاستراتيجية", "🔀 التحليل الشامل", "combo", query)
     elif btn_B:
         run_analysis("مفكر إبداعي يقدم أفكار غير تقليدية", "💡 الإبداعي", "creative", query)
 
+# =============================================
+# 5. OFFICIAL REPORT
+# =============================================
 if st.session_state.chat_history:
     st.divider()
     st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
