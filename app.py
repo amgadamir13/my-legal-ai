@@ -43,13 +43,15 @@ if "chat_history" not in st.session_state:
 # =============================================
 st.title("⚖️ Strategic War Room Pro")
 
+# ✅ API key from secrets
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 if not api_key:
     st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Streamlit باسم GEMINI_API_KEY.")
 
+# ✅ Use only supported models
 model_choice = st.selectbox("اختر الموديل:", [
-    "gemini-3-flash",
-    "gemini-3-pro",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
@@ -76,7 +78,7 @@ btn_B = col5.button("💡 إبداعي")
 def run_analysis(role, label, style, query, full_audit=False):
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_choice)
+        model = genai.GenerativeModel(model_name=model_choice)
 
         if full_audit:
             prompt = f"""
