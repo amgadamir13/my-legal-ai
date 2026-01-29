@@ -1,116 +1,87 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import google.generativeai as genai
-import fitz  # PyMuPDF
-import re
-import time
+import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE CONFIGURATION & STYLING
+# 1. PAGE SETUP & STYLING
 # =============================================
-st.set_page_config(page_title="War Room Audit", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
 
 st.markdown("""
-<style>
-html, body, [data-testid="stAppViewContainer"] {
-    direction: rtl !important;
-    text-align: right !important;
-    font-family: 'Cairo', sans-serif !important;
-    unicode-bidi: bidi-override !important;
-    writing-mode: horizontal-tb !important;
-}
-* {
-    word-break: normal !important;
-    white-space: normal !important;
-    line-height: 1.8 !important;
-}
-.msg-box { padding: 15px; border-radius: 10px; margin-bottom: 10px; border-right: 6px solid; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-.user-style { border-color: #1e3a8a; background: #f1f5f9; color: #1e3a8a; }
-.response-style { border-color: #059669; background: #ecfdf5; color: #064e3b; }
-</style>
+    <style>
+    html, body, [data-testid="stAppViewContainer"] {
+        direction: rtl !important; 
+        text-align: right !important;
+        font-family: 'Cairo', sans-serif !important;
+    }
+    .msg-box { 
+        padding: 15px; border-radius: 10px; margin-bottom: 10px; 
+        border-right: 6px solid; background-color: #ffffff;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        width: 100%;
+        word-wrap: break-word;
+        white-space: normal;
+    }
+    .legal { border-color: #1d4ed8; background-color: #eff6ff; color: #1e3a8a; }
+    .psych { border-color: #7c3aed; background-color: #f5f3ff; color: #2e1065; }
+    .strat { border-color: #ea580c; background-color: #fffbeb; color: #451a03; }
+    .combo { border-color: #059669; background-color: #ecfdf5; color: #064e3b; }
+    .creative { border-color: #9333ea; background-color: #faf5ff; color: #4c1d95; }
+    </style>
 """, unsafe_allow_html=True)
 
 # =============================================
-# 2. UTILITIES
+# 2. SESSION STATE
 # =============================================
-def normalize_arabic_text(text: str) -> str:
-    if not text: return ""
-    text = re.sub(r'[\u200b-\u200f\u202a-\u202e]', '', text)
-    replacements = {'أ':'ا','إ':'ا','آ':'ا','ة':'ه'}
-    for old,new in replacements.items(): text = text.replace(old,new)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-def extract_text_from_pdf(file_bytes, max_pages=20):
-    text = ""
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for i, page in enumerate(doc):
-            if i >= max_pages:
-                text += "\n[تم الاقتصار على أول 20 صفحة]"
-                break
-            text += page.get_text() + "\n"
-    return normalize_arabic_text(text)
-
-def get_text_from_files(files):
-    if not files: return ""
-    all_text = []
-    for file in files:
-        if file.type != "application/pdf": continue
-        file.seek(0)
-        text = extract_text_from_pdf(file.read())
-        if text: all_text.append(f"--- ملف: {file.name} ---\n{text}\n")
-    return "\n".join(all_text)
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # =============================================
-# 3. SESSION STATE
+# 3. MAIN APP INTERFACE
 # =============================================
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
-if "last_request_time" not in st.session_state: st.session_state.last_request_time = 0
+st.title("⚖️ Strategic War Room Pro")
 
-# =============================================
-# 4. SIDEBAR
-# =============================================
-with st.sidebar:
-    st.header("🛡️ الإعدادات")
-    model_choice = st.selectbox("اختر النموذج:", ["gemini-3-flash","gemini-3-pro"])
-    files = st.file_uploader("📂 رفع ملفات PDF", type=["pdf"], accept_multiple_files=True)
+api_key = st.secrets.get("GEMINI_API_KEY", None)
+if not api_key:
+    st.error("⚠️ لم يتم العثور على مفتاح API في الأسرار. أضفه في Streamlit باسم GEMINI_API_KEY.")
 
-# =============================================
-# 5. MAIN INTERFACE
-# =============================================
-st.title("⚖️ War Room Audit Report")
-user_query = st.text_area("🎯 صف الموقف الحالي:", height=120)
+model_choice = st.selectbox("اختر الموديل:", [
+    "gemini-3-flash",
+    "gemini-3-pro",
+])
 
-col1,col2 = st.columns(2)
-btn_analyze = col1.button("🔍 تحليل شامل")
-btn_clear = col2.button("🗑️ مسح السجل")
-
-if btn_clear:
+if st.button("🗑️ مسح الذاكرة"):
     st.session_state.chat_history = []
     st.rerun()
 
-# =============================================
-# 6. EXECUTION LOGIC
-# =============================================
-def run_analysis(query, docs_text):
-    current_time = time.time()
-    if current_time - st.session_state.last_request_time < 2:
-        st.warning("⏳ انتظر ثانيتين بين الطلبات")
-        return
-    st.session_state.last_request_time = current_time
+# عرض المحادثات السابقة
+for chat in st.session_state.chat_history:
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-    # ✅ API key from secrets
-    api_key = st.secrets["general"]["GEMINI_API_KEY"]
+# إدخال النص
+query = st.text_area("اشرح الموقف الاستراتيجي:", height=120)
 
+col1, col2, col3, col4, col5 = st.columns(5)
+btn_L = col1.button("⚖️ قانوني")
+btn_P = col2.button("🧠 نفسي")
+btn_S = col3.button("🧨 استراتيجي")
+btn_C = col4.button("🔀 تحليل شامل")
+btn_B = col5.button("💡 إبداعي")
+
+# =============================================
+# 4. PROCESSING LOGIC
+# =============================================
+def run_analysis(role, label, style, query, full_audit=False):
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_choice)
 
-        prompt = f"""
+        if full_audit:
+            prompt = f"""
 أنت فريق متعدد التخصصات في غرفة الحرب القانونية.
 الموقف: {query}
-الوثائق: {docs_text or "لا توجد"}
 
 أنتج تقريراً منظماً يتضمن:
 1. ملخص تنفيذي.
@@ -124,50 +95,65 @@ def run_analysis(query, docs_text):
 9. توصيات نهائية عملية.
 
 استخدم لغة قانونية دقيقة، مصطلحات صحيحة، وتنظيم رسمي كما في المذكرات والمحاضر.
-        """
+            """
+        else:
+            prompt = f"""
+أنت {role}.
+الموقف: {query}.
+إذا لم تكن المعلومات مؤكدة بنسبة 100%، اطلب توضيح من المستخدم بدلاً من الافتراض.
+أجب بالعربية بأسلوب منظم.
+ابدأ بـ الملخص التنفيذي.
+ثم قسم الرد إلى:
+- الوقائع
+- القضايا المطروحة
+- التحليل
+- الاستنتاج
+أضف نصائح عملية وذكية (street-smart) إذا كان الدور قانوني.
+            """
 
-        with st.spinner("🤖 جاري التحليل..."):
+        with st.spinner("⚔️ جاري التحليل..."):
             res = model.generate_content(prompt)
 
         if res and res.text:
             st.session_state.chat_history.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "query": query,
-                "response": res.text
+                "label": label,
+                "content": res.text,
+                "style": style
             })
             st.rerun()
         else:
-            st.error("لم يتم توليد رد")
+            st.error("لم يتم توليد رد من النموذج.")
+    except gapi_errors.ResourceExhausted:
+        st.error("⚠️ انتهت الحصة المجانية لهذا الموديل. جرب تبديل الموديل أو انتظر قليلاً.")
     except Exception as e:
-        st.error(f"❌ خطأ: {e}")
+        st.error(f"⚠️ خطأ في النظام: {e}")
 
-if user_query and btn_analyze:
-    docs_text = get_text_from_files(files)
-    run_analysis(user_query, docs_text)
+if query and api_key:
+    if btn_L:
+        run_analysis("محامي ذكي يجمع بين التحليل القانوني والمشورة العملية", "⚖️ القانوني", "legal", query)
+    elif btn_P:
+        run_analysis("محلل نفسي وخبير تفاوض", "🧠 النفسي", "psych", query)
+    elif btn_S:
+        run_analysis("مخطط استراتيجي داهية", "🧨 الاستراتيجي", "strat", query)
+    elif btn_C:
+        run_analysis("فريق غرفة الحرب متعدد التخصصات", "🔀 التحليل الشامل", "combo", query, full_audit=True)
+    elif btn_B:
+        run_analysis("مفكر إبداعي يقدم أفكار غير تقليدية", "💡 الإبداعي", "creative", query)
 
 # =============================================
-# 7. DISPLAY CHAT HISTORY
+# 5. OFFICIAL REPORT
 # =============================================
 if st.session_state.chat_history:
-    st.subheader("📜 سجل التحليلات")
-    for chat in reversed(st.session_state.chat_history[-10:]):
-        st.markdown(f'''
-        <div class="msg-box user-style">
-            <b>👤 سؤالك:</b> {chat['query']}
-            <br><small>{chat['timestamp']}</small>
-        </div>
-        ''', unsafe_allow_html=True)
-        st.markdown(f'''
-        <div class="msg-box response-style">
-            <b>📋 التقرير:</b><br>{chat['response']}
-        </div>
-        ''', unsafe_allow_html=True)
+    st.divider()
+    st.subheader("📋 التقرير الاستراتيجي النهائي (#Official-Findings)")
+    
+    full_report = f"--- تقرير Strategic War Room ---\nالتاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+    for c in st.session_state.chat_history:
+        full_report += f"[{c['label']}]:\n{c['content']}\n{'-'*30}\n"
 
-    # Download report
-    report_text = "\n\n".join(
-        [f"سؤال: {c['query']}\nوقت: {c['timestamp']}\nرد:\n{c['response']}" for c in st.session_state.chat_history]
+    st.download_button(
+        label="📥 تحميل التقرير الرسمي الكامل",
+        data=full_report.encode('utf-8'),
+        file_name=f"Strategic_Report_{datetime.now().strftime('%y%m%d_%H%M')}.txt",
+        mime="text/plain"
     )
-    st.download_button("📥 تنزيل التقرير", report_text, file_name="WarRoom_Report.txt", mime="text/plain")
-
-else:
-    st.info("✍️ اكتب موقفك واضغط على زر التحليل لبدء العمل.")
