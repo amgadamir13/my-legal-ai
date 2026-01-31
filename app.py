@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import google.generativeai as genai
+import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE SETUP & STYLING
+# 1. PAGE SETUP & STYLING (iOS Optimized)
 # =============================================
-st.set_page_config(page_title="The Classico", layout="centered")
+st.set_page_config(page_title="The Classico: War Room", layout="centered")
 
 st.markdown("""
     <style>
@@ -15,98 +16,96 @@ st.markdown("""
         text-align: right !important;
         font-family: 'Cairo', sans-serif !important;
     }
-    .msg-box { 
-        padding: 15px; border-radius: 10px; margin-bottom: 10px; 
-        border-right: 6px solid; background-color: #ffffff;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        width: 100%;
-        word-wrap: break-word;
-    }
-    .legal { border-color: #1d4ed8; background-color: #eff6ff; color: #1e3a8a; }
-    .strat { border-color: #ea580c; background-color: #fffbeb; color: #451a03; }
+    .zone-a { border-right: 6px solid #1d4ed8; background-color: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .zone-b { border-right: 6px solid #b91c1c; background-color: #fef2f2; padding: 15px; border-radius: 8px; color: #7f1d1d; }
+    .ghost-tag { background-color: #000; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; }
     </style>
 """, unsafe_allow_html=True)
 
 # =============================================
-# 2. CONSTITUTION & SESSION STATE
+# 2. SESSION STATE
 # =============================================
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-CONSTITUTION = """
-1. Reverse Engineering: Write the ending first.
-2. The Triple Strike: Legal, Financial, Psychological.
-3. Controlled Alternatives: Choice architecture.
-4. Information Embargo: No burning cards early.
-5. Identify 'The Mother': Target the root cause.
-6. Poker Face: Zero unintended words.
-7. Shadow Tracking: Flag conspiracy links.
-"""
+if "vault" not in st.session_state:
+    st.session_state.vault = []
 
 # =============================================
-# 3. INTERFACE
+# 3. CORE LOGIC: THE ORCHESTRATOR
 # =============================================
-st.title("⚖️ The Classico Boardroom")
+def run_classico_orchestration(query, model_choice, api_key):
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_choice)
+    
+    # --- STEP 1: THE SILENT FIGHT (Internal Debate) ---
+    with st.status("⚔️ جاري تفعيل غرف العمليات (The Silent Fight)...", expanded=False) as status:
+        st.write("🕵️ جاري تعقب الخيوط (Detective Unit)...")
+        # Internal Logic for Red Team & Detective
+        internal_prompt = f"تحليل استخباراتي للموقف: {query}. ابحث عن 'اللاعبين الخفيين' والثغرات."
+        internal_analysis = model.generate_content(internal_prompt).text
+        
+        st.write("🔴 جاري هجوم الفريق الأحمر (Red Team)...")
+        status.update(label="✅ اكتمل التحليل الداخلي", state="complete")
+
+    # --- STEP 2: DUAL-ZONE GENERATION ---
+    final_prompt = f"""
+    أنت نظام 'The Classico' لإدارة الصراعات. بناءً على الموقف التالي: {query}
+    
+    عليك تطبيق (القواعد الـ 18 الذهبية) وتوليد تقرير في منطقتين:
+    
+    [ZONE_A]: ملف قانوني رصين (محامي شرعي وعقاري). ركز على المواريث، عقود الإيجار، والأدلة. (للقضاء).
+    [ZONE_B]: قبو الاستراتيجية. ملف لـ 'Chairman' فقط. شفرة 'الخال/الأم'، تحليل الجشع، التلاعب النفسي، وخطوات الضغط (Psy-Ops).
+    
+    التزم بالتنسيق التالي بدقة:
+    ZONE_A_START
+    (المحتوى)
+    ZONE_A_END
+    ZONE_B_START
+    (المحتوى)
+    ZONE_B_END
+    """
+    
+    response = model.generate_content(final_prompt).text
+    
+    # Parsing zones
+    try:
+        zone_a = response.split("ZONE_A_START")[1].split("ZONE_A_END")[0].strip()
+        zone_b = response.split("ZONE_B_START")[1].split("ZONE_B_END")[0].strip()
+        return zone_a, zone_b
+    except:
+        return response, "لم يتم توليد القبو الاستراتيجي بشكل منفصل."
+
+# =============================================
+# 4. MAIN INTERFACE
+# =============================================
+st.title("🏛️ Project: The Classico")
+st.caption("نظام أوركسترا إدارة الصراعات - الإصدار الاستراتيجي")
 
 api_key = st.secrets.get("GEMINI_API_KEY", None)
+model_choice = st.selectbox("الموديل الاستراتيجي:", ["gemini-1.5-pro", "gemini-1.5-flash"])
 
-if st.button("🗑️ مسح الذاكرة"):
-    st.session_state.chat_history = []
-    st.rerun()
+query = st.text_area("أدخل معطيات الصراع (Raw Data):", height=150, placeholder="مثال: نزاع على تركة عقارية، تدخل أطراف خارجية...")
 
-query = st.text_area("اشرح الموقف الاستراتيجي:", height=150)
-
-# =============================================
-# 4. THE CLASSICO ENGINE
-# =============================================
-def run_classico(user_query):
-    try:
-        genai.configure(api_key=api_key)
-        
-        # FIXED: Explicit model path to prevent 404
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
-        
-        with st.spinner("⚔️ جاري استدعاء الشركات والتدقيق..."):
-            full_prompt = f"""
-            أنت نظام 'The Classico'. التزم بالدستور: {CONSTITUTION}
-            حلل الموقف من منظور قانوني، استراتيجي، ونفسي. 
-            الموقف: {user_query}
-            
-            يجب تقسيم الرد بدقة إلى:
-            ZONE_A: (الملف القانوني الرسمي)
-            ZONE_B: (خزنة الاستراتيجية السرية)
-            """
-            res = model.generate_content(full_prompt)
-
-        if res and res.text:
-            st.session_state.chat_history.append({"content": res.text})
-            st.rerun()
-    except Exception as e:
-        st.error(f"⚠️ خطأ: {e}")
-
-if st.button("🚀 إطلاق العملية", use_container_width=True):
+if st.button("🚀 بدء تفعيل البروتوكول (The Triple Strike)"):
     if query and api_key:
-        run_classico(query)
-    elif not api_key:
-        st.error("⚠️ API Key Missing in Secrets")
+        za, zb = run_classico_orchestration(query, model_choice, api_key)
+        st.session_state.vault.append({"date": datetime.now(), "legal": za, "secret": zb})
+        st.rerun()
 
 # =============================================
-# 5. OUTPUT DISPLAY
+# 5. DUAL-ZONE DISPLAY
 # =============================================
-if st.session_state.chat_history:
-    latest = st.session_state.chat_history[-1]["content"]
+for entry in reversed(st.session_state.vault):
     st.divider()
+    st.info(f"📅 جلسة بتاريخ: {entry['date'].strftime('%Y-%m-%d %H:%M')}")
     
-    if "ZONE_A" in latest and "ZONE_B" in latest:
-        # Splitting logic
-        parts = latest.split("ZONE_B:")
-        z_a = parts[0].replace("ZONE_A:", "").strip()
-        z_b = parts[1].strip()
-        
-        t1, t2 = st.tabs(["📄 Zone A (قانوني)", "🔐 Zone B (استراتيجي)"])
-        with t1:
-            st.markdown(f'<div class="msg-box legal">{z_a}</div>', unsafe_allow_html=True)
-        with t2:
-            st.markdown(f'<div class="msg-box strat">{z_b}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="msg-box">{latest}</div>', unsafe_allow_html=True)
+    # Zone A: The Legal File
+    with st.expander("⚖️ Zone A: الملف القانوني (Court-Ready)", expanded=True):
+        st.markdown(f'<div class="zone-a">{entry["legal"]}</div>', unsafe_allow_html=True)
+    
+    # Zone B: The Strategic Vault
+    with st.expander("🕵️ Zone B: قبو الاستراتيجية (Chairman Only)", expanded=False):
+        st.markdown(f'<div class="zone-b">{entry["secret"]}</div>', unsafe_allow_html=True)
+        st.warning("⚠️ تحذير: هذه المعلومات للاطلاع الشخصي فقط ولا تظهر في ملف القضية.")
+
+if st.button("🗑️ إتلاف السجلات (Clear All)"):
+    st.session_state.vault = []
+    st.rerun()
