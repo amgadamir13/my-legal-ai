@@ -5,7 +5,7 @@ import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE SETUP & STYLING
+# 1. PAGE SETUP & STYLING (Original Design)
 # =============================================
 st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
 
@@ -27,7 +27,6 @@ st.markdown("""
     .legal { border-color: #1d4ed8; background-color: #eff6ff; color: #1e3a8a; }
     .vault { border-color: #dc2626; background-color: #fef2f2; color: #7f1d1d; border-style: dashed; }
     .psych { border-color: #7c3aed; background-color: #f5f3ff; color: #2e1065; }
-    .strat { border-color: #ea580c; background-color: #fffbeb; color: #451a03; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,8 +42,6 @@ if "chat_history" not in st.session_state:
 st.title("🏛️ Project: The Classico")
 
 api_key = st.secrets.get("GEMINI_API_KEY", None)
-if not api_key:
-    st.error("⚠️ API Key not found in Streamlit Secrets.")
 
 # Updated to Gemini 2.5 stable versions
 model_choice = st.selectbox("اختر الموديل الاستراتيجي:", [
@@ -56,11 +53,11 @@ if st.button("🗑️ مسح الذاكرة"):
     st.session_state.chat_history = []
     st.rerun()
 
-# عرض المحادثات السابقة
+# Display History
 for chat in st.session_state.chat_history:
     st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
 
-# إدخال النص
+# Input
 query = st.text_area("اشرح الموقف الاستراتيجي (Raw Data):", height=120)
 
 col1, col2, col3 = st.columns(3)
@@ -69,7 +66,7 @@ btn_L = col2.button("⚖️ قانوني")
 btn_P = col3.button("🧠 نفسي")
 
 # =============================================
-# 4. PROCESSING LOGIC
+# 4. PROCESSING LOGIC (The Surgical Upgrade)
 # =============================================
 def run_analysis(role_type, query):
     try:
@@ -79,20 +76,24 @@ def run_analysis(role_type, query):
         if role_type == "classico":
             prompt = f"""
             أنت نظام 'The Classico'. الموقف: {query}.
-            طبق 'القواعد الـ 18' (الهندسة العكسية، الضربة الثلاثية، البدائل المحكومة).
+            طبق 'القواعد الـ 18' (الهندسة العكسية، الضربة الثلاثية).
             
             قسم الرد إلى:
-            ZONE_A: الملف القانوني (صياغة شرعية وعقارية رصينة).
-            ZONE_B: قبو الاستراتيجية (تحليل الجشع، Shadow Players، وخطة الضغط).
+            ZONE_A: الملف القانوني (صياغة شرعية قضائية رصينة: حيث إن، بناءً عليه، الثابت يقيناً).
+            ZONE_B: قبو الاستراتيجية (تحليل الجشع، Shadow Players، وخطة الضغط النفسي).
             """
         elif role_type == "legal":
-            prompt = f"أنت محامي ذكي خبير في قوانين المواريث والعقارات. حلل الموقف قانونياً: {query}"
+            prompt = f"""
+            أنت 'المستشار القانوني' الخبير. تخصصك المواريث والعقارات.
+            المطلوب: صياغة "مذكرة قانونية" للموقف: {query}.
+            استخدم لغة قضائية شرعية صارمة (تكييف الوقائع، الأسانيد، والطلبات).
+            """
         else:
-            prompt = f"أنت خبير تحليل نفسي جنائي. حدد نقاط الضعف والجشع في الأطراف التالية: {query}"
+            prompt = f"أنت خبير تحليل نفسي جنائي. حدد نقاط الضعف والجشع والـ Scapegoat في الموقف: {query}"
 
-        with st.status("⚔️ جاري تفعيل 'The Silent Fight'...", expanded=False) as status:
+        with st.status("⚔️ جاري تفعيل غرف العمليات...", expanded=False) as status:
             res = model.generate_content(prompt)
-            status.update(label="✅ اكتملت العملية الاستراتيجية", state="complete")
+            status.update(label="✅ اكتملت العملية", state="complete")
 
         if res and res.text:
             text = res.text
@@ -108,7 +109,7 @@ def run_analysis(role_type, query):
             st.rerun()
 
     except Exception as e:
-        st.error(f"⚠️ خطأ في النظام: {e}")
+        st.error(f"⚠️ خطأ: {e}")
 
 if query and api_key:
     if btn_Classico:
@@ -127,9 +128,4 @@ if st.session_state.chat_history:
     for c in st.session_state.chat_history:
         full_report += f"[{c['label']}]:\n{c['content']}\n{'-'*30}\n"
 
-    st.download_button(
-        label="📥 تحميل التقرير الرسمي",
-        data=full_report.encode('utf-8'),
-        file_name=f"The_Classico_Report_{datetime.now().strftime('%y%m%d')}.txt",
-        mime="text/plain"
-    )
+    st.download_button("📥 تحميل التقرير", full_report.encode('utf-8'), "Classico_Report.txt")
