@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import google.generativeai as genai
-import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE SETUP & STYLING (VERIFIED ORIGINAL)
+# 1. PAGE SETUP & STYLING
 # =============================================
-st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
+st.set_page_config(page_title="The Classico", layout="centered")
 
 st.markdown("""
     <style>
@@ -29,7 +28,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================
-# 2. SESSION STATE & CONSTITUTION
+# 2. CONSTITUTION & SESSION STATE
 # =============================================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -45,44 +44,37 @@ CONSTITUTION = """
 """
 
 # =============================================
-# 3. MAIN APP INTERFACE (VERIFIED ORIGINAL)
+# 3. INTERFACE
 # =============================================
-st.title("⚖️ Strategic War Room Pro")
+st.title("⚖️ The Classico Boardroom")
 
-# YOUR ORIGINAL API KEY LOGIC
 api_key = st.secrets.get("GEMINI_API_KEY", None)
-
-# STABLE MODEL IDS (FIXED TO PREVENT 404)
-model_choice = st.selectbox("اختر الموديل:", [
-    "models/gemini-1.5-flash",
-    "models/gemini-1.5-pro",
-    "models/gemini-pro"
-])
 
 if st.button("🗑️ مسح الذاكرة"):
     st.session_state.chat_history = []
     st.rerun()
 
-query = st.text_area("اشرح الموقف الاستراتيجي:", height=120)
+query = st.text_area("اشرح الموقف الاستراتيجي:", height=150)
 
 # =============================================
-# 4. PROCESSING LOGIC (CLASSICO ORCHESTRATION)
+# 4. THE CLASSICO ENGINE
 # =============================================
-def run_classico_analysis(user_query):
+def run_classico(user_query):
     try:
         genai.configure(api_key=api_key)
-        # Using the specific name from the selector to avoid 404
-        model = genai.GenerativeModel(model_name=model_choice)
+        
+        # FIXED: Explicit model path to prevent 404
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
         
         with st.spinner("⚔️ جاري استدعاء الشركات والتدقيق..."):
             full_prompt = f"""
             أنت نظام 'The Classico'. التزم بالدستور: {CONSTITUTION}
-            المهمة: قم بتحليل الموقف من منظور قانوني، استراتيجي، ونفسي. 
+            حلل الموقف من منظور قانوني، استراتيجي، ونفسي. 
             الموقف: {user_query}
             
-            المخرجات المطلوبة حصراً بهذا التنسيق:
-            ZONE_A: (الملف القانوني) - اكتب هنا.
-            ZONE_B: (الخزنة السرية) - اكتب هنا.
+            يجب تقسيم الرد بدقة إلى:
+            ZONE_A: (الملف القانوني الرسمي)
+            ZONE_B: (خزنة الاستراتيجية السرية)
             """
             res = model.generate_content(full_prompt)
 
@@ -90,33 +82,31 @@ def run_classico_analysis(user_query):
             st.session_state.chat_history.append({"content": res.text})
             st.rerun()
     except Exception as e:
-        st.error(f"⚠️ خطأ في الموديل: {e}")
+        st.error(f"⚠️ خطأ: {e}")
 
-if st.button("🚀 إطلاق عملية الكلاسيكو", use_container_width=True):
+if st.button("🚀 إطلاق العملية", use_container_width=True):
     if query and api_key:
-        run_classico_analysis(query)
+        run_classico(query)
     elif not api_key:
-        st.error("⚠️ مفتاح API مفقود في Secrets!")
+        st.error("⚠️ API Key Missing in Secrets")
 
 # =============================================
-# 5. DUAL-ZONE DISPLAY (ZONE A / B SPLIT)
+# 5. OUTPUT DISPLAY
 # =============================================
 if st.session_state.chat_history:
     latest = st.session_state.chat_history[-1]["content"]
     st.divider()
     
-    if "ZONE_A:" in latest and "ZONE_B:" in latest:
+    if "ZONE_A" in latest and "ZONE_B" in latest:
+        # Splitting logic
         parts = latest.split("ZONE_B:")
-        zone_a = parts[0].replace("ZONE_A:", "").strip()
-        zone_b = parts[1].strip()
+        z_a = parts[0].replace("ZONE_A:", "").strip()
+        z_b = parts[1].strip()
         
-        tab1, tab2 = st.tabs(["📄 Zone A (قانوني)", "🔐 Zone B (استراتيجي)"])
-        
-        with tab1:
-            st.markdown(f'<div class="msg-box legal"><b>🏛️ التقرير الرسمي:</b><br>{zone_a}</div>', unsafe_allow_html=True)
-            st.download_button("📥 تحميل للمحامي", zone_a, file_name="Legal_File.txt")
-            
-        with tab2:
-            st.markdown(f'<div class="msg-box strat"><b>🧨 الخزنة السرية:</b><br>{zone_b}</div>', unsafe_allow_html=True)
+        t1, t2 = st.tabs(["📄 Zone A (قانوني)", "🔐 Zone B (استراتيجي)"])
+        with t1:
+            st.markdown(f'<div class="msg-box legal">{z_a}</div>', unsafe_allow_html=True)
+        with t2:
+            st.markdown(f'<div class="msg-box strat">{z_b}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="msg-box">{latest}</div>', unsafe_allow_html=True)
