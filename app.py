@@ -5,7 +5,7 @@ import google.api_core.exceptions as gapi_errors
 from datetime import datetime
 
 # =============================================
-# 1. PAGE SETUP & STYLING (YOUR ORIGINAL CRITERIA)
+# 1. PAGE SETUP & STYLING (VERIFIED ORIGINAL)
 # =============================================
 st.set_page_config(page_title="Strategic War Room Pro", layout="centered")
 
@@ -45,15 +45,18 @@ CONSTITUTION = """
 """
 
 # =============================================
-# 3. MAIN APP INTERFACE
+# 3. MAIN APP INTERFACE (VERIFIED ORIGINAL)
 # =============================================
 st.title("⚖️ Strategic War Room Pro")
 
+# YOUR ORIGINAL API KEY LOGIC
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 
+# STABLE MODEL IDS (FIXED TO PREVENT 404)
 model_choice = st.selectbox("اختر الموديل:", [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro"
+    "models/gemini-1.5-flash",
+    "models/gemini-1.5-pro",
+    "models/gemini-pro"
 ])
 
 if st.button("🗑️ مسح الذاكرة"):
@@ -63,13 +66,13 @@ if st.button("🗑️ مسح الذاكرة"):
 query = st.text_area("اشرح الموقف الاستراتيجي:", height=120)
 
 # =============================================
-# 4. PROCESSING LOGIC (THE CLASSICO FLOW)
+# 4. PROCESSING LOGIC (CLASSICO ORCHESTRATION)
 # =============================================
 def run_classico_analysis(user_query):
     try:
         genai.configure(api_key=api_key)
-        # Using the v1beta endpoint implicitly via the library
-        model = genai.GenerativeModel(model_choice)
+        # Using the specific name from the selector to avoid 404
+        model = genai.GenerativeModel(model_name=model_choice)
         
         with st.spinner("⚔️ جاري استدعاء الشركات والتدقيق..."):
             full_prompt = f"""
@@ -87,23 +90,21 @@ def run_classico_analysis(user_query):
             st.session_state.chat_history.append({"content": res.text})
             st.rerun()
     except Exception as e:
-        st.error(f"⚠️ خطأ: {e}")
+        st.error(f"⚠️ خطأ في الموديل: {e}")
 
 if st.button("🚀 إطلاق عملية الكلاسيكو", use_container_width=True):
     if query and api_key:
         run_classico_analysis(query)
     elif not api_key:
-        st.error("⚠️ مفتاح API مفقود!")
+        st.error("⚠️ مفتاح API مفقود في Secrets!")
 
 # =============================================
-# 5. DUAL-ZONE DISPLAY
+# 5. DUAL-ZONE DISPLAY (ZONE A / B SPLIT)
 # =============================================
 if st.session_state.chat_history:
     latest = st.session_state.chat_history[-1]["content"]
-    
     st.divider()
     
-    # Logic to split the zones for the UI
     if "ZONE_A:" in latest and "ZONE_B:" in latest:
         parts = latest.split("ZONE_B:")
         zone_a = parts[0].replace("ZONE_A:", "").strip()
@@ -113,10 +114,9 @@ if st.session_state.chat_history:
         
         with tab1:
             st.markdown(f'<div class="msg-box legal"><b>🏛️ التقرير الرسمي:</b><br>{zone_a}</div>', unsafe_allow_html=True)
-            st.download_button("📥 تحميل للمحامي", zone_a)
+            st.download_button("📥 تحميل للمحامي", zone_a, file_name="Legal_File.txt")
             
         with tab2:
             st.markdown(f'<div class="msg-box strat"><b>🧨 الخزنة السرية:</b><br>{zone_b}</div>', unsafe_allow_html=True)
     else:
-        # Fallback if the AI doesn't follow the ZONE format perfectly
         st.markdown(f'<div class="msg-box">{latest}</div>', unsafe_allow_html=True)
