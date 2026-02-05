@@ -66,30 +66,50 @@ btn_L = col2.button("⚖️ قانوني")
 btn_P = col3.button("🧠 نفسي")
 
 # =============================================
-# 4. PROCESSING LOGIC (The Surgical Upgrade)
+# 4. PROCESSING LOGIC (Refactored Surgical Upgrade)
 # =============================================
+
+import re
+from datetime import datetime
+
+def build_prompt(role_type, query):
+    prompts = {
+        "classico": f"""
+        أنت نظام 'The Classico'. الموقف: {query}.
+        طبق 'القواعد الـ 18' (الهندسة العكسية، الضربة الثلاثية).
+        
+        قسم الرد إلى:
+        ZONE_A: الملف القانوني (صياغة شرعية قضائية رصينة: حيث إن، بناءً عليه، الثابت يقيناً).
+        ZONE_B: قبو الاستراتيجية (تحليل الجشع، Shadow Players، وخطة الضغط النفسي).
+        """,
+        "legal": f"""
+        أنت 'المستشار القانوني' الخبير. تخصصك المواريث والعقارات.
+        المطلوب: صياغة "مذكرة قانونية" للموقف: {query}.
+        استخدم لغة قضائية شرعية صارمة (تكييف الوقائع، الأسانيد، والطلبات).
+        """,
+        "psych": f"""
+        أنت خبير تحليل نفسي جنائي. حدد نقاط الضعف والجشع والـ Scapegoat في الموقف: {query}
+        """
+    }
+    return prompts.get(role_type, prompts["psych"])
+
+
+def parse_classico_response(text):
+    """Extract Zone A and Zone B safely using regex."""
+    match_a = re.search(r"ZONE_A:(.*?)(?=ZONE_B:)", text, re.DOTALL)
+    match_b = re.search(r"ZONE_B:(.*)", text, re.DOTALL)
+    return (
+        match_a.group(1).strip() if match_a else None,
+        match_b.group(1).strip() if match_b else None,
+    )
+
+
 def run_analysis(role_type, query):
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_choice)
 
-        if role_type == "classico":
-            prompt = f"""
-            أنت نظام 'The Classico'. الموقف: {query}.
-            طبق 'القواعد الـ 18' (الهندسة العكسية، الضربة الثلاثية).
-            
-            قسم الرد إلى:
-            ZONE_A: الملف القانوني (صياغة شرعية قضائية رصينة: حيث إن، بناءً عليه، الثابت يقيناً).
-            ZONE_B: قبو الاستراتيجية (تحليل الجشع، Shadow Players، وخطة الضغط النفسي).
-            """
-        elif role_type == "legal":
-            prompt = f"""
-            أنت 'المستشار القانوني' الخبير. تخصصك المواريث والعقارات.
-            المطلوب: صياغة "مذكرة قانونية" للموقف: {query}.
-            استخدم لغة قضائية شرعية صارمة (تكييف الوقائع، الأسانيد، والطلبات).
-            """
-        else:
-            prompt = f"أنت خبير تحليل نفسي جنائي. حدد نقاط الضعف والجشع والـ Scapegoat في الموقف: {query}"
+        prompt = build_prompt(role_type, query)
 
         with st.status("⚔️ جاري تفعيل غرف العمليات...", expanded=False) as status:
             res = model.generate_content(prompt)
@@ -97,35 +117,43 @@ def run_analysis(role_type, query):
 
         if res and res.text:
             text = res.text
-            if role_type == "classico" and "ZONE_B:" in text:
-                za = text.split("ZONE_A:")[1].split("ZONE_B:")[0].strip()
-                zb = text.split("ZONE_B:")[1].strip()
-                st.session_state.chat_history.append({"label": "⚖️ Zone A: القانوني", "content": za, "style": "legal"})
-                st.session_state.chat_history.append({"label": "🕵️ Zone B: القبو", "content": zb, "style": "vault"})
+
+            if role_type == "classico":
+                za, zb = parse_classico_response(text)
+                if za:
+                    st.session_state.chat_history.append(
+                        {"label": "⚖️ Zone A: القانوني", "content": za, "style": "legal"}
+                    )
+                if zb:
+                    st.session_state.chat_history.append(
+                        {"label": "🕵️ Zone B: القبو", "content": zb, "style": "vault"}
+                    )
             else:
-                label = "⚖️ القانوني" if role_type == "legal" else "🧠 النفسي"
-                style = "legal" if role_type == "legal" else "psych"
+                role_map = {
+                    "legal": ("⚖️ القانوني", "legal"),
+                    "psych": ("🧠 النفسي", "psych"),
+                }
+                label, style = role_map.get(role_type, ("🧠 النفسي", "psych"))
                 st.session_state.chat_history.append({"label": label, "content": text, "style": style})
+
             st.rerun()
 
     except Exception as e:
-        st.error(f"⚠️ خطأ: {e}")
+        st.error(f"⚠️ خطأ أثناء التحليل: {str(e)}")
 
-if query and api_key:
-    if btn_Classico:
-        run_analysis("classico", query)
-    elif btn_L:
-        run_analysis("legal", query)
-    elif btn_P:
-        run_analysis("psych", query)
 
 # =============================================
-# 5. OFFICIAL REPORT
+# 5. OFFICIAL REPORT (Refactored)
 # =============================================
 if st.session_state.chat_history:
     st.divider()
-    full_report = f"--- تقرير Strategic War Room ---\nالتاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-    for c in st.session_state.chat_history:
-        full_report += f"[{c['label']}]:\n{c['content']}\n{'-'*30}\n"
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+    header = f"--- تقرير Strategic War Room ---\nالتاريخ: {timestamp}\n\n"
+
+    sections = [
+        f"[{c['label']}]:\n{c['content']}\n{'-'*30}\n"
+        for c in st.session_state.chat_history
+    ]
+    full_report = header + "".join(sections)
 
     st.download_button("📥 تحميل التقرير", full_report.encode('utf-8'), "Classico_Report.txt")
