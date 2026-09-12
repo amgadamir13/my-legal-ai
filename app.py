@@ -64,7 +64,23 @@ col1, col2, col3 = st.columns(3)
 btn_Classico = col1.button("🏛️ بروتوكول Classico")
 btn_L = col2.button("⚖️ قانوني")
 btn_P = col3.button("🧠 نفسي")
+if btn_Classico:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("classico", query)
 
+elif btn_L:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("legal", query)
+
+elif btn_P:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("psych", query)
 # =============================================
 # 4. PROCESSING LOGIC (Refactored Surgical Upgrade)
 # =============================================
