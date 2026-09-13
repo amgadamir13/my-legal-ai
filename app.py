@@ -3,6 +3,7 @@ import streamlit as st
 import google.generativeai as genai
 import google.api_core.exceptions as gapi_errors
 from datetime import datetime
+import re
 
 # =============================================
 # 1. PAGE SETUP & STYLING (Original Design)
@@ -37,58 +38,11 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 # =============================================
-# 3. MAIN APP INTERFACE
+# 3. PROCESSING LOGIC (Moved Before Usage)
 # =============================================
-st.title("🏛️ Project: The Classico")
-
-api_key = st.secrets.get("GEMINI_API_KEY", None)
-
-# Updated to Gemini 2.5 stable versions
-model_choice = st.selectbox("اختر الموديل الاستراتيجي:", [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-])
-
-if st.button("🗑️ مسح الذاكرة"):
-    st.session_state.chat_history = []
-    st.rerun()
-
-# Display History
-for chat in st.session_state.chat_history:
-    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
-
-# Input
-query = st.text_area("اشرح الموقف الاستراتيجي (Raw Data):", height=120)
-
-col1, col2, col3 = st.columns(3)
-btn_Classico = col1.button("🏛️ بروتوكول Classico")
-btn_L = col2.button("⚖️ قانوني")
-btn_P = col3.button("🧠 نفسي")
-if btn_Classico:
-    if not query.strip():
-        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
-    else:
-        run_analysis("classico", query)
-
-elif btn_L:
-    if not query.strip():
-        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
-    else:
-        run_analysis("legal", query)
-
-elif btn_P:
-    if not query.strip():
-        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
-    else:
-        run_analysis("psych", query)
-# =============================================
-# 4. PROCESSING LOGIC (Refactored Surgical Upgrade)
-# =============================================
-
-import re
-from datetime import datetime
 
 def build_prompt(role_type, query):
+    """Build role-specific prompts for analysis."""
     prompts = {
         "classico": f"""
         أنت نظام 'The Classico'. الموقف: {query}.
@@ -120,10 +74,27 @@ def parse_classico_response(text):
     )
 
 
+def validate_api_key(api_key):
+    """Validate API key is properly configured."""
+    if not api_key:
+        st.error("❌ خطأ: لم يتم العثور على GEMINI_API_KEY في السرية. يرجى تكوينها في إعدادات Streamlit.")
+        return False
+    return True
+
+
 def run_analysis(role_type, query):
+    """Execute analysis based on role type."""
     try:
+        # Get API key from secrets
+        api_key = st.secrets.get("GEMINI_API_KEY", None)
+        
+        # Validate API key
+        if not validate_api_key(api_key):
+            return
+        
+        # Configure and initialize model
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_choice)
+        model = genai.GenerativeModel(st.session_state.model_choice)
 
         prompt = build_prompt(role_type, query)
 
@@ -153,10 +124,65 @@ def run_analysis(role_type, query):
                 st.session_state.chat_history.append({"label": label, "content": text, "style": style})
 
             st.rerun()
+        else:
+            st.error("⚠️ لم يتم الحصول على رد من النموذج")
 
+    except gapi_errors.GoogleAPIError as e:
+        st.error(f"⚠️ خطأ في API: {str(e)}")
+    except ValueError as e:
+        st.error(f"⚠️ خطأ في الإدخال: {str(e)}")
     except Exception as e:
-        st.error(f"⚠️ خطأ أثناء التحليل: {str(e)}")
+        st.error(f"⚠️ خطأ غير متوقع أثناء التحليل: {str(e)}")
 
+
+# =============================================
+# 4. MAIN APP INTERFACE
+# =============================================
+st.title("🏛️ Project: The Classico")
+
+# Store model choice in session state
+if "model_choice" not in st.session_state:
+    st.session_state.model_choice = "gemini-2.5-flash"
+
+# Updated to Gemini 2.5 stable versions
+st.session_state.model_choice = st.selectbox("اختر الموديل الاستراتيجي:", [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+], index=0 if st.session_state.model_choice == "gemini-2.5-flash" else 1)
+
+if st.button("🗑️ مسح الذاكرة"):
+    st.session_state.chat_history = []
+    st.rerun()
+
+# Display History
+for chat in st.session_state.chat_history:
+    st.markdown(f'<div class="msg-box {chat["style"]}"><b>{chat["label"]}</b>:<br>{chat["content"]}</div>', unsafe_allow_html=True)
+
+# Input
+query = st.text_area("اشرح الموقف الاستراتيجي (Raw Data):", height=120)
+
+col1, col2, col3 = st.columns(3)
+btn_Classico = col1.button("🏛️ بروتوكول Classico")
+btn_L = col2.button("⚖️ قانوني")
+btn_P = col3.button("🧠 نفسي")
+
+if btn_Classico:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("classico", query)
+
+elif btn_L:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("legal", query)
+
+elif btn_P:
+    if not query.strip():
+        st.warning("⚠️ الرجاء إدخال الموقف الاستراتيجي")
+    else:
+        run_analysis("psych", query)
 
 # =============================================
 # 5. OFFICIAL REPORT (Refactored)
