@@ -1,1 +1,6 @@
+# لا ترفع هذه الملفات إلى GitHub
 .streamlit/secrets.toml
+family_legal_case.sqlite3
+*.sqlite3
+*.db
+__pycache__/
